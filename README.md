@@ -19,15 +19,14 @@ progress, ETAs, the final tunnel URL, and a list of public deployments.
         qvac.acurast.dev            api.qvac.acurast.dev
               │                            │
          ┌────▼────────────────────────────▼────┐
-         │            Caddy (auto-TLS)            │
+         │     Traefik (existing, TLS + route)    │
          └────┬────────────────────────────┬─────┘
-   static     │                            │ reverse proxy
-   Astro build│                            │
+   Host rule  │                            │ Host rule
               ▼                   ┌─────────▼──────────────┐
-        (one-click deploy)        │  Express API (holds     │
-                                  │  mnemonic) @acurast/sdk │
-                                  └─────────┬──────────────┘
-                                            │ deploy
+   ┌──────────────────┐          │  Express API (holds     │
+   │ web: nginx static │          │  mnemonic) @acurast/sdk │
+   │ (Astro build)     │          └─────────┬──────────────┘
+   └──────────────────┘                     │ deploy
                                             ▼  Acurast network
                                             │ workload POSTs lifecycle
                                   POST /api/tunnel/:id?token=…  (CALLBACK_URL)
@@ -85,18 +84,23 @@ cd web && npm install && npm run dev   # Astro landing page
 
 ## Docker
 
+Routing + TLS are handled by your **existing Traefik** via labels — there is no
+proxy in this compose file. Traefik must already be running and own the external
+network named in `.env`.
+
 ```bash
-cp .env.example .env   # fill in real values
+cp .env.example .env   # fill in real values incl. the TRAEFIK_* vars
 docker compose up -d --build
 ```
 
-- `api` — the Express service (history persisted to `./data`).
-- `caddy` — builds the Astro site, serves `qvac.acurast.dev`, reverse-proxies
-  `api.qvac.acurast.dev → api:8080`, and handles TLS automatically.
+- `api` — the Express service (history persisted to `./data`). Labelled for
+  `API_HOST` on port 8080.
+- `web` — the Astro static build served by nginx. Labelled for `WEB_HOST`.
 
-The landing page bakes `PUBLIC_API_BASE` (= `API_BASE_URL`) and
-`PUBLIC_DEPLOY_KEY` at build time via the `caddy` build args in
-`docker-compose.yml`.
+Both containers join the external `TRAEFIK_NETWORK` and are routed by Host rule
+to the `TRAEFIK_ENTRYPOINT` with `TRAEFIK_CERTRESOLVER`. Adjust those `.env`
+values to match your Traefik config. The landing page bakes `PUBLIC_API_BASE`
+(= `API_BASE_URL`) and `PUBLIC_DEPLOY_KEY` at build time via the `web` build args.
 
 ## API
 
