@@ -24,7 +24,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
-      - "traefik.http.routers.qvac-api.rule=Host(`${API_HOST:-api.qvac.acurast.dev}`)"
+      - "traefik.http.routers.qvac-api.rule=Host(`${API_HOST:-qvac-api.acurast.dev}`)"
       - "traefik.http.routers.qvac-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.qvac-api.tls=true"
       - "traefik.http.routers.qvac-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-le}"
@@ -36,7 +36,7 @@ services:
       dockerfile: web/Dockerfile
       args:
         # Baked into the static landing page at build time.
-        PUBLIC_API_BASE: ${API_BASE_URL:-https://api.qvac.acurast.dev}
+        PUBLIC_API_BASE: ${API_BASE_URL:-https://qvac-api.acurast.dev}
         PUBLIC_DEPLOY_KEY: ${PUBLIC_DEPLOY_KEY:-changeme-public-qvac-key}
     restart: unless-stopped
     networks:

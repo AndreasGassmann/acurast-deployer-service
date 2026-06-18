@@ -11,12 +11,12 @@ project (a private on-device LLM server) and offers a one-click deploy with live
 progress, ETAs, the final tunnel URL, and a list of public deployments.
 
 - `qvac.acurast.dev` — landing page (static)
-- `api.qvac.acurast.dev` — backend API
+- `qvac-api.acurast.dev` — backend API
 
 ## Architecture
 
 ```
-        qvac.acurast.dev            api.qvac.acurast.dev
+        qvac.acurast.dev            qvac-api.acurast.dev
               │                            │
          ┌────▼────────────────────────────▼────┐
          │     Traefik (existing, TLS + route)    │
@@ -38,7 +38,7 @@ A deployment runs in two phases:
    `uploaded → prepared → submitted → matching → matched → ack → env-set`.
 2. **Phase B (workload):** after env vars are set the workload boots, opens the
    Acurast Tunnel, and POSTs lifecycle events to the per-deployment `CALLBACK_URL`:
-   `started` (carries the tunnel `url`) → `model_loading` → `model_ready`.
+   `started` (carries the tunnel `webUrl`) → `model_loading` → `model_ready`.
 
 There is no protocol-level time estimate, so per-phase ETAs are hardcoded per
 template (`src/templates/qvac.ts`).
@@ -51,8 +51,9 @@ template (`src/templates/qvac.ts`).
 - **No DNS work** for tunnels — `DOMAIN_SUFFIX` defaults to the shared,
   Acurast-managed `tunnel.acurast.dev` zone (wildcard A + `_acu` TXT already
   published). Only a custom vanity domain needs your own records.
-- **Public DNS for the two app domains** if you want Caddy auto-TLS:
-  `qvac.acurast.dev` and `api.qvac.acurast.dev` → your host.
+- **Public DNS for the two app domains** → your host (DNS-only / grey-cloud so
+  Traefik's Let's Encrypt HTTP-01 works): `qvac.acurast.dev` and
+  `qvac-api.acurast.dev`.
 
 ## Configuration
 
@@ -104,7 +105,7 @@ values to match your Traefik config. The landing page bakes `PUBLIC_API_BASE`
 
 ## API
 
-All endpoints under `api.qvac.acurast.dev`. Auth via `x-api-key` header (or
+All endpoints under `qvac-api.acurast.dev`. Auth via `x-api-key` header (or
 `Authorization: Bearer <key>`).
 
 | Method | Path | Auth | Purpose |

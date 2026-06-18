@@ -9,7 +9,7 @@ COPY web/package.json web/package-lock.json* ./
 RUN npm install
 COPY web/ ./
 # PUBLIC_* values are baked into the static build at compile time.
-ARG PUBLIC_API_BASE=https://api.qvac.acurast.dev
+ARG PUBLIC_API_BASE=https://qvac-api.acurast.dev
 ARG PUBLIC_DEPLOY_KEY=changeme-public-qvac-key
 ENV PUBLIC_API_BASE=$PUBLIC_API_BASE
 ENV PUBLIC_DEPLOY_KEY=$PUBLIC_DEPLOY_KEY
