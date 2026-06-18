@@ -22,6 +22,7 @@ const config: Config = {
   port: 8080,
   dataDir: "/unused",
   publicDeployRatePerHour: 5,
+  corsOrigins: ["*"],
 };
 
 interface Timer {

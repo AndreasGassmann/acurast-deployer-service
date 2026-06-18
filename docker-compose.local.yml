@@ -1,0 +1,42 @@
+# Local full-stack test WITHOUT Traefik/TLS. Exposes ports directly and runs the
+# API in MOCK_DEPLOY mode (no chain/IPFS/funds). Open http://localhost:8080.
+#
+#   docker compose -f docker-compose.local.yml up --build
+#
+# The landing page calls the API at http://localhost:8090 (baked at build time);
+# the mock deploy self-fires the tunnel callback so the full flow completes.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ACURAST_MNEMONIC: "test test test test test test test test test test test junk"
+      RPC_WSS: "wss://example.invalid"
+      IPFS_ENDPOINT: "https://example.invalid"
+      IPFS_API_KEY: "x"
+      API_BASE_URL: "http://localhost:8090"
+      API_KEYS: "local-full-key"
+      PUBLIC_DEPLOY_KEY: "local-public-key"
+      CORS_ORIGINS: "*"
+      MOCK_DEPLOY: "true"
+      PORT: "8090"
+      DATA_DIR: /app/data
+      PUBLIC_DEPLOY_RATE_PER_HOUR: "1000"
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./data-local:/app/data
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        PUBLIC_API_BASE: "http://localhost:8090"
+        PUBLIC_DEPLOY_KEY: "local-public-key"
+    ports:
+      - "8080:80"
+    depends_on:
+      - api

@@ -18,6 +18,8 @@ export interface Config {
   port: number;
   dataDir: string;
   publicDeployRatePerHour: number;
+  /** Allowed CORS origins; ["*"] allows any. */
+  corsOrigins: string[];
 }
 
 const DEFAULT_DOMAIN_SUFFIX = "tunnel.acurast.dev";
@@ -67,5 +69,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port,
     dataDir: env.DATA_DIR?.trim() || "./data",
     publicDeployRatePerHour,
+    corsOrigins: splitKeys(env.CORS_ORIGINS?.trim() || "*"),
   };
 }

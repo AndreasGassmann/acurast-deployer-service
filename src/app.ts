@@ -8,6 +8,7 @@ import type { Deployments } from "./deployments.js";
 import type { EventHub } from "./events.js";
 import { Orchestrator, ValidationError, type CallbackEvent } from "./orchestrator.js";
 import { identify, requireKey, requireFullKey } from "./auth.js";
+import { cors } from "./cors.js";
 import { RateLimiter } from "./rate-limit.js";
 import { listTemplates } from "./templates/index.js";
 
@@ -22,6 +23,7 @@ export function createApp(deps: AppDeps): Express {
   const { config, deployments, events, orchestrator } = deps;
   const app = express();
   app.set("trust proxy", true);
+  app.use(cors(config));
   app.use(express.json({ limit: "256kb" }));
   app.use(identify(config));
 

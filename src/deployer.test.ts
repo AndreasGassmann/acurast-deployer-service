@@ -16,6 +16,7 @@ const config: Config = {
   port: 8080,
   dataDir: "./data",
   publicDeployRatePerHour: 5,
+  corsOrigins: ["*"],
 };
 
 describe("sdkStatusToPhase", () => {

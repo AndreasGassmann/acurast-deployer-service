@@ -30,6 +30,7 @@ const config: Config = {
   port: 8080,
   dataDir: "/unused",
   publicDeployRatePerHour: 2,
+  corsOrigins: ["*"],
 };
 
 const fakeDeps: DeployDeps = {
@@ -77,6 +78,16 @@ afterEach(async () => {
 describe("HTTP API", () => {
   it("GET /healthz is open", async () => {
     await request(app).get("/healthz").expect(200, { ok: true });
+  });
+
+  it("sets CORS headers and answers preflight", async () => {
+    const res = await request(app).get("/healthz").set("Origin", "https://qvac.acurast.dev");
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
+    const pre = await request(app)
+      .options("/deployments")
+      .set("Origin", "https://qvac.acurast.dev")
+      .expect(204);
+    expect(pre.headers["access-control-allow-headers"]).toMatch(/x-api-key/);
   });
 
   it("GET /templates requires a key", async () => {
