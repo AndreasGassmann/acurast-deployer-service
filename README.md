@@ -65,7 +65,7 @@ Copy `.env.example` to `.env` and fill it in. All variables:
 |---|---|---|
 | `ACURAST_MNEMONIC` | yes | Deployer seed. Never logged, never in history. |
 | `RPC_WSS` | yes | Substrate RPC websocket (canary by default). |
-| `IPFS_ENDPOINT` / `IPFS_API_KEY` | yes | IPFS upload target. |
+| `IPFS_ENDPOINT` / `IPFS_API_KEY` | no | IPFS upload target. Defaults to Acurast's hosted proxy (no key needed); set both to use your own Pinata-compatible service. |
 | `API_BASE_URL` | yes | Public URL of this API; used to mint `CALLBACK_URL`. |
 | `API_KEYS` | yes | Comma-separated full-access keys. |
 | `PUBLIC_DEPLOY_KEY` | yes | qvac-only, rate-limited key baked into the landing page. |

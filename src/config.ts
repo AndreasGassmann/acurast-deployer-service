@@ -24,6 +24,11 @@ export interface Config {
 
 const DEFAULT_DOMAIN_SUFFIX = "tunnel.acurast.dev";
 
+// Acurast's hosted IPFS proxy (same default the @acurast/cli ships). Pinata-
+// compatible (`/pinning/pinFileToIPFS`) and needs no API key, so deploys work
+// out of the box without provisioning Pinata credentials.
+const DEFAULT_IPFS_ENDPOINT = "https://ipfs-proxy.acurast.prod.gke.papers.tech";
+
 function required(env: NodeJS.ProcessEnv, key: string): string {
   const v = env[key];
   if (v === undefined || v.trim() === "") {
@@ -60,8 +65,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     acurastMnemonic: required(env, "ACURAST_MNEMONIC"),
     rpcWss: required(env, "RPC_WSS"),
-    ipfsEndpoint: required(env, "IPFS_ENDPOINT"),
-    ipfsApiKey: required(env, "IPFS_API_KEY"),
+    // Default to the Acurast IPFS proxy (no key required). Override both to use
+    // your own Pinata-compatible pinning service.
+    ipfsEndpoint: (env.IPFS_ENDPOINT?.trim() || DEFAULT_IPFS_ENDPOINT).replace(/\/+$/, ""),
+    ipfsApiKey: env.IPFS_API_KEY?.trim() || "",
     apiBaseUrl: required(env, "API_BASE_URL").replace(/\/+$/, ""),
     apiKeys,
     publicDeployKey: required(env, "PUBLIC_DEPLOY_KEY"),

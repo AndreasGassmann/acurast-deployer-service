@@ -4,8 +4,6 @@ import { loadConfig } from "./config";
 const base = {
   ACURAST_MNEMONIC: "a b c",
   RPC_WSS: "wss://rpc",
-  IPFS_ENDPOINT: "https://ipfs",
-  IPFS_API_KEY: "k",
   API_BASE_URL: "https://api.qvac.acurast.dev/",
   API_KEYS: "k1, k2 ,k3",
   PUBLIC_DEPLOY_KEY: "pub",
@@ -23,6 +21,22 @@ describe("loadConfig", () => {
   it("defaults DOMAIN_SUFFIX to the shared Acurast zone", () => {
     const c = loadConfig(base as NodeJS.ProcessEnv);
     expect(c.domainSuffix).toBe("tunnel.acurast.dev");
+  });
+
+  it("defaults IPFS to the Acurast proxy with no API key", () => {
+    const c = loadConfig(base as NodeJS.ProcessEnv);
+    expect(c.ipfsEndpoint).toBe("https://ipfs-proxy.acurast.prod.gke.papers.tech");
+    expect(c.ipfsApiKey).toBe("");
+  });
+
+  it("honours a custom IPFS endpoint + key (trailing slash trimmed)", () => {
+    const c = loadConfig({
+      ...base,
+      IPFS_ENDPOINT: "https://my-pinata/",
+      IPFS_API_KEY: "k",
+    } as NodeJS.ProcessEnv);
+    expect(c.ipfsEndpoint).toBe("https://my-pinata");
+    expect(c.ipfsApiKey).toBe("k");
   });
 
   it("honours a custom DOMAIN_SUFFIX", () => {
