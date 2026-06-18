@@ -33,7 +33,7 @@ describe("sdkStatusToPhase", () => {
 describe("runDeploy", () => {
   it("drives onPhase from the SDK status callback and injects env vars", async () => {
     const phases: Phase[] = [];
-    let capturedEnv: Record<string, string> | null = null;
+    let capturedEnv: Array<{ key: string; value: string }> | null = null;
 
     const deps: DeployDeps = {
       loadAcurastConfig: () => ({ projects: {} }),
@@ -72,10 +72,10 @@ describe("runDeploy", () => {
       "ack",
       "env-set",
     ]);
-    expect(capturedEnv).toEqual({
-      CALLBACK_URL: "https://api/api/tunnel/dep_1?token=t",
-      DOMAIN_SUFFIX: "tunnel.acurast.dev",
-    });
+    expect(capturedEnv).toEqual([
+      { key: "CALLBACK_URL", value: "https://api/api/tunnel/dep_1?token=t" },
+      { key: "DOMAIN_SUFFIX", value: "tunnel.acurast.dev" },
+    ]);
   });
 
   it("propagates SDK errors", async () => {

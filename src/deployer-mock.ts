@@ -42,7 +42,7 @@ export function mockDeps(): DeployDeps {
 
       // Simulate the workload booting and reporting the tunnel, detached so the
       // SDK call resolves at env-set just like the real flow.
-      const callbackUrl = options.envVars.CALLBACK_URL;
+      const callbackUrl = options.envVars.find((e) => e.key === "CALLBACK_URL")?.value;
       if (callbackUrl) {
         void (async () => {
           await delay(1000);

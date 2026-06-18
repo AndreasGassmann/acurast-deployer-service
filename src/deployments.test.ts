@@ -64,6 +64,19 @@ describe("Deployments", () => {
     expect(pub.every((v) => v.public)).toBe(true);
   });
 
+  it("hides failed/timed-out deploys from the public list but keeps them via view()", () => {
+    const d = new Deployments();
+    const failed = d.create("qvac", true, "2026-06-18T00:00:01.000Z").id;
+    const ok = d.create("qvac", true, "2026-06-18T00:00:02.000Z").id;
+    d.setStatus(failed, "failed", "2026-06-18T00:00:03.000Z", { error: "boom" });
+    const pub = d.list({ publicOnly: true });
+    expect(pub.map((v) => v.id)).toEqual([ok]);
+    // Deployer still sees their own failure via the direct lookup.
+    expect(d.view(failed)?.status).toBe("failed");
+    // Full (keyed) list still includes it.
+    expect(d.list().map((v) => v.id)).toContain(failed);
+  });
+
   it("rebuilds from history and reports in-flight deploys", () => {
     const d = new Deployments();
     const records: HistoryRecord[] = [

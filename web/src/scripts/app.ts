@@ -19,7 +19,7 @@ interface DeploymentView {
 
 // Major milestones shown in the UI (a subset of backend phases, grouped).
 const STEPS: { phases: string[]; label: string }[] = [
-  { phases: ["uploaded", "prepared", "submitted"], label: "Uploading & submitting job" },
+  { phases: ["uploaded", "prepared", "submitted"], label: "Uploading & submitting deployment" },
   { phases: ["matching", "matched"], label: "Matching a processor" },
   { phases: ["ack", "env-set"], label: "Provisioning the device" },
   { phases: ["started"], label: "Opening the tunnel" },
@@ -28,7 +28,7 @@ const STEPS: { phases: string[]; label: string }[] = [
 ];
 
 const PHASE_LABEL: Record<string, string> = {
-  uploaded: "Uploading job",
+  uploaded: "Uploading deployment",
   prepared: "Preparing",
   submitted: "Submitting on-chain",
   matching: "Matching a processor",

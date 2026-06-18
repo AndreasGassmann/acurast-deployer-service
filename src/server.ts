@@ -8,6 +8,18 @@ import { realDeps } from "./deployer.js";
 import { mockDeps } from "./deployer-mock.js";
 import { createApp } from "./app.js";
 
+// A deploy runs detached and the SDK can throw outside any awaited path (e.g. in
+// its internal env-var step), which would otherwise crash the whole service and
+// drop every in-flight deployment. Log and keep serving instead of exiting.
+process.on("unhandledRejection", (reason) => {
+  // eslint-disable-next-line no-console
+  console.error("unhandledRejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  // eslint-disable-next-line no-console
+  console.error("uncaughtException:", err);
+});
+
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
   const history = new History(config.dataDir);

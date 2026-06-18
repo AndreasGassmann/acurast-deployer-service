@@ -23,7 +23,9 @@ export interface DeployDeps {
       wallet: unknown;
       rpcEndpoint: string;
       ipfs: { endpoint: string; apiKey: string };
-      envVars: Record<string, string>;
+      // The SDK expects an array of {key,value} (it `.map`s over this); a plain
+      // object crashes setEnvironmentVariablesMulti with "envVars.map is not a function".
+      envVars: Array<{ key: string; value: string }>;
       statusCallback: (status: string, data?: unknown) => void;
     },
   ) => Promise<unknown>;
@@ -101,13 +103,15 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
   const job = deps.convertConfigToJob(acurastConfig);
   const wallet = await deps.walletFromMnemonic(config.acurastMnemonic);
 
-  const envVars = template.injectedEnv({
+  const envRecord = template.injectedEnv({
     callbackUrl,
     domainSuffix: config.domainSuffix,
   });
+  // The SDK wants an array of {key,value}, not a plain object.
+  const envVars = Object.entries(envRecord).map(([key, value]) => ({ key, value }));
   console.log(
     `[deployer] deploying: rpc=${config.rpcWss} ipfs=${config.ipfsEndpoint} ` +
-      `callbackUrl=${callbackUrl} envKeys=[${Object.keys(envVars).join(",")}]`,
+      `callbackUrl=${callbackUrl} envKeys=[${Object.keys(envRecord).join(",")}]`,
   );
 
   await deps.deployProject(acurastConfig, job, {

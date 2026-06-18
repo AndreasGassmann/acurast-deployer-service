@@ -111,6 +111,10 @@ export class Deployments {
     const out: DeploymentView[] = [];
     for (const item of this.items.values()) {
       if (opts.publicOnly && !item.public) continue;
+      // Failed/timed-out deploys are hidden from the public gallery — the
+      // deployer still sees their own outcome via the direct /deployments/:id
+      // lookup (they hold the id). Keeps stale failures off the shared list.
+      if (opts.publicOnly && (item.status === "failed" || item.status === "timed-out")) continue;
       out.push(this.toView(item));
     }
     // newest first
