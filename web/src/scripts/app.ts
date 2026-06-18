@@ -55,6 +55,10 @@ const publicList = $<HTMLDivElement>("publicList");
 let pollTimer: number | undefined;
 let etaTimer: number | undefined;
 let localEta = 0;
+// Phase whose estimate localEta currently reflects. The server ETA is a static
+// per-phase estimate, so we only re-sync localEta when the phase changes —
+// otherwise each poll would reset the local countdown and it'd never tick down.
+let etaPhase: string | null | undefined = undefined;
 
 function renderSteps(currentPhase: string | null): void {
   const currentIdx = currentPhase
@@ -75,6 +79,8 @@ function fmtEta(sec: number): string {
 
 function startEtaCountdown(): void {
   if (etaTimer) clearInterval(etaTimer);
+  localEta = 0;
+  etaPhase = undefined;
   etaTimer = window.setInterval(() => {
     if (localEta > 0) {
       localEta -= 1;
@@ -88,7 +94,14 @@ function applyView(v: DeploymentView): void {
   phaseLabel.textContent = v.phase ? PHASE_LABEL[v.phase] ?? v.phase : "Starting…";
   renderSteps(v.phase);
   if (v.etaSeconds != null) {
-    localEta = v.etaSeconds;
+    if (v.phase !== etaPhase) {
+      // New phase: adopt its fresh estimate.
+      etaPhase = v.phase;
+      localEta = v.etaSeconds;
+    } else {
+      // Same phase: never let the countdown jump back up.
+      localEta = Math.min(localEta, v.etaSeconds);
+    }
     etaLabel.textContent = fmtEta(localEta);
   }
 }
