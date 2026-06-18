@@ -89,11 +89,8 @@ export class Orchestrator {
     if (!parsed.success) {
       throw new ValidationError(`invalid params: ${parsed.error.message}`, 400);
     }
-    // `public` may come from params or the explicit flag; params wins if present.
-    const isPublic =
-      typeof (parsed.data as { public?: boolean }).public === "boolean"
-        ? (parsed.data as { public: boolean }).public
-        : requestedPublic;
+    // `public` is a listing flag (not a deploy param), set explicitly by the caller.
+    const isPublic = requestedPublic;
 
     const now = this.clock.nowIso();
     const { id, token } = this.deployments.create(templateId, isPublic, now);

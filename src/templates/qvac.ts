@@ -18,8 +18,6 @@ const paramSchema = z
   .object({
     /** Model id understood by the qvac server. */
     model: z.string().min(1).default("LLAMA_3_2_1B_INST_Q4_0"),
-    /** If true, the deployment is listed publicly and usable by anyone. */
-    public: z.boolean().default(false),
   })
   .strict();
 

@@ -113,7 +113,7 @@ describe("Orchestrator", () => {
     const { orchestrator, deployments, events } = build(fakeDeps(), clock);
     const seen: ProgressEvent[] = [];
 
-    const id = await orchestrator.start("qvac", { model: "m", public: true }, true);
+    const id = await orchestrator.start("qvac", { model: "m" }, true);
     events.subscribe(id, (e) => seen.push(e));
     await flush();
 
@@ -182,7 +182,7 @@ describe("Orchestrator", () => {
   it("persists history that can rebuild the same state", async () => {
     const { clock } = makeClock();
     const { orchestrator, history } = build(fakeDeps(), clock);
-    const id = await orchestrator.start("qvac", { public: true }, true);
+    const id = await orchestrator.start("qvac", {}, true);
     await flush();
     await orchestrator.handleCallback(id, "x", { event: "log" }); // ignored
     // deterministically wait for the serialized history writes to flush

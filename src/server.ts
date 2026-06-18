@@ -5,6 +5,7 @@ import { Deployments } from "./deployments.js";
 import { EventHub } from "./events.js";
 import { Orchestrator } from "./orchestrator.js";
 import { realDeps } from "./deployer.js";
+import { mockDeps } from "./deployer-mock.js";
 import { createApp } from "./app.js";
 
 async function main(): Promise<void> {
@@ -17,7 +18,12 @@ async function main(): Promise<void> {
   const records = await history.readAll();
   const inFlight = deployments.rebuildFrom(records);
 
-  const deps = await realDeps();
+  const mock = process.env.MOCK_DEPLOY === "true";
+  const deps = mock ? mockDeps() : await realDeps();
+  if (mock) {
+    // eslint-disable-next-line no-console
+    console.log("MOCK_DEPLOY=true — using simulated deployments (no chain/IPFS).");
+  }
   const orchestrator = new Orchestrator({ config, deployments, history, events, deps });
 
   // Re-arm tunnel-wait timeouts for deploys that were in flight at shutdown.

@@ -94,6 +94,16 @@ describe("HTTP API", () => {
     expect(res.body.id).toMatch(/^dep_/);
   });
 
+  it("top-level public flag makes the deployment show in the public list", async () => {
+    const res = await request(app)
+      .post("/deployments")
+      .set("x-api-key", "full-key")
+      .send({ template: "qvac", public: true })
+      .expect(202);
+    const list = await request(app).get("/deployments?public=true").expect(200);
+    expect(list.body.some((d: { id: string }) => d.id === res.body.id)).toBe(true);
+  });
+
   it("public key may only deploy qvac", async () => {
     await request(app)
       .post("/deployments")
