@@ -197,12 +197,19 @@ export class Orchestrator {
       this.deployments.setStatus(id, "awaiting-tunnel", now, { tunnelUrl });
     }
     this.deployments.setPhase(id, phase, now);
-    await this.record(id, `callback:${event.event}`, phase);
 
-    if (phase === "model-ready") {
-      // Live; the run window (expiry) was already set from the job schedule at deploy.
+    // The tunnel (`started`/webUrl) and the model (`model_ready`) are reported by
+    // separate workload processes and can arrive in either order. The deployment
+    // is only truly ready once we have BOTH — otherwise a model_ready that beats
+    // the tunnel would go "ready" with no URL (useless to the user).
+    const item = this.deployments.get(id);
+    if (item && item.tunnelUrl && item.phase === "model-ready" && item.status !== "ready") {
+      this.deployments.setStatus(id, "ready", now);
       this.clearTimer(id);
+      console.log(`[orchestrator] id=${id} ready (tunnel + model both up)`);
     }
+
+    await this.record(id, `callback:${event.event}`, phase);
     return true;
   }
 

@@ -84,14 +84,20 @@ export class Deployments {
   setPhase(id: string, phase: Phase, now: string): void {
     const item = this.items.get(id);
     if (!item) return;
-    item.phase = phase;
     item.updatedAt = now;
-    // Derive status from phase unless already terminal.
+    // Phase is monotonic: `started` (tunnel) and `model-ready` (model) come from
+    // separate processes in any order, so a late event must not regress progress.
+    if (item.phase === null || PHASE_ORDER.indexOf(phase) > PHASE_ORDER.indexOf(item.phase)) {
+      item.phase = phase;
+    }
+    // Derive the intermediate status from the phase. Terminal "ready" is NOT set
+    // here — that requires both the tunnel URL and model-ready, decided by the
+    // orchestrator. Don't override an already-terminal status.
     if (!isTerminal(item.status)) {
-      if (phase === "model-ready") item.status = "ready";
-      else if (PHASE_ORDER.indexOf(phase) >= PHASE_ORDER.indexOf("env-set"))
-        item.status = "awaiting-tunnel";
-      else item.status = "deploying";
+      item.status =
+        PHASE_ORDER.indexOf(item.phase!) >= PHASE_ORDER.indexOf("env-set")
+          ? "awaiting-tunnel"
+          : "deploying";
     }
   }
 

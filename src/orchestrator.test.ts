@@ -137,6 +137,29 @@ describe("Orchestrator", () => {
     expect(seen.at(-1)?.status).toBe("ready");
   });
 
+  it("only goes ready once both the tunnel and the model are up (any order)", async () => {
+    const { clock } = makeClock();
+    const { orchestrator, deployments } = build(fakeDeps(), clock);
+    const id = await orchestrator.start("qvac", {}, true);
+    await flush();
+    const token = deployments.get(id)!.token;
+
+    // model_ready arrives BEFORE the tunnel — must not be terminal-ready yet.
+    await orchestrator.handleCallback(id, token, { event: "model_ready" });
+    expect(deployments.view(id)?.status).toBe("awaiting-tunnel");
+    expect(deployments.view(id)?.tunnelUrl).toBeNull();
+
+    // tunnel reports late -> now ready, with the URL.
+    await orchestrator.handleCallback(id, token, {
+      event: "started",
+      webUrl: "https://abc.tunnel.acurast.dev:8443",
+    });
+    const v = deployments.view(id)!;
+    expect(v.status).toBe("ready");
+    expect(v.tunnelUrl).toBe("https://abc.tunnel.acurast.dev:8443");
+    expect(v.phase).toBe("model-ready"); // phase didn't regress to "started"
+  });
+
   it("expires a ready deployment once its run window elapses", async () => {
     const { clock, advance } = makeClock();
     const { orchestrator, deployments } = build(fakeDeps(), clock);

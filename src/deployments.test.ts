@@ -30,8 +30,18 @@ describe("Deployments", () => {
     expect(d.view(id)?.status).toBe("deploying");
     d.setPhase(id, "env-set", NOW);
     expect(d.view(id)?.status).toBe("awaiting-tunnel");
+    // model-ready alone stays awaiting-tunnel — terminal "ready" also needs the
+    // tunnel URL, which the orchestrator confirms (tunnel + model both up).
     d.setPhase(id, "model-ready", NOW);
-    expect(d.view(id)?.status).toBe("ready");
+    expect(d.view(id)?.status).toBe("awaiting-tunnel");
+  });
+
+  it("keeps phase monotonic when events arrive out of order", () => {
+    const d = new Deployments();
+    const { id } = d.create("qvac", false, NOW);
+    d.setPhase(id, "model-ready", NOW); // model finishes before the tunnel reports
+    d.setPhase(id, "started", NOW); // late tunnel event must not regress progress
+    expect(d.view(id)?.phase).toBe("model-ready");
   });
 
   it("computes monotonic progress and an ETA that shrinks", () => {
