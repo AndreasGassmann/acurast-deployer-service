@@ -45,8 +45,11 @@ Domains:
   lifecycle events to a `CALLBACK_URL`. That callback is our inbound webhook.
   Tunnel events: `started` (carries `url`), `model_loading`, `model_ready`, `log`,
   `error`. Tunnel URL format: `https://<clientId>.<DOMAIN_SUFFIX>:8443` where
-  `clientId` is ephemeral per deployment and `DOMAIN_SUFFIX` is a domain we control
-  (wildcard DNS + `_acu` TXT record required, published DNS-only/grey-cloud).
+  `clientId` is ephemeral per deployment. `DOMAIN_SUFFIX` defaults to
+  **`tunnel.acurast.dev`**, a shared Acurast-managed zone whose `*` A record (→ a
+  canary relay) and `_acu` TXT record are **already published** (verified via live
+  DNS) — so **no DNS work is required** for the default flow. A custom domain is
+  optional and then needs your own wildcard A + `_acu` TXT records.
 - **No time estimates exist** in the protocol/SDK. We hardcode per-template,
   per-phase duration estimates for the UI.
 - `acurast-qvac` (github.com/Acurast/acurast-qvac): runs an on-device LLM inference
@@ -86,9 +89,10 @@ The Astro site is built to static files and served by Caddy from a shared volume
 ### Backend modules (isolated units)
 
 - `config.ts` — load + validate env at boot. Required: `ACURAST_MNEMONIC`,
-  `RPC_WSS`, `IPFS_ENDPOINT`, `IPFS_API_KEY`, `DOMAIN_SUFFIX`, `API_BASE_URL`,
+  `RPC_WSS`, `IPFS_ENDPOINT`, `IPFS_API_KEY`, `API_BASE_URL`,
   `API_KEYS` (comma-separated full-access keys), `PUBLIC_DEPLOY_KEY` (qvac-only,
-  rate-limited), `PORT`, `DATA_DIR`.
+  rate-limited), `PORT`, `DATA_DIR`. Optional: `DOMAIN_SUFFIX` (default
+  `tunnel.acurast.dev`).
 - `auth.ts` — `x-api-key` middleware. Full keys → all templates + read all history
   via their key. `PUBLIC_DEPLOY_KEY` → may only deploy template `qvac`, rate-limited
   per IP. Public deployment reads need no key.
@@ -199,6 +203,8 @@ an unguessable per-deployment `token`, not an API key.
 
 - Fund the deployer mnemonic with cACU (canary).
 - Obtain IPFS endpoint + API key.
-- Control `DOMAIN_SUFFIX` DNS: wildcard A/CNAME to canary relays (DNS-only) +
-  `_acu` TXT record. Confirm `_acu` preimage and current relay IPs against the live
-  tunnel before relying on it.
+- `DOMAIN_SUFFIX` DNS: **none required** by default — `tunnel.acurast.dev` is a
+  shared Acurast-managed zone with `*` A + `_acu` TXT already published. Only if you
+  opt into a custom vanity domain do you publish your own wildcard A (→ canary
+  relays) + `_acu` TXT; confirm the `_acu` preimage and current relay IPs against the
+  live tunnel first.
