@@ -72,6 +72,12 @@ export interface HistoryRecord {
   tunnelUrl?: string;
   error?: string;
   expiresAt?: string;
+  /**
+   * Per-deployment callback token, persisted once on the "created" record so an
+   * in-flight deployment can still authenticate its workload callbacks after a
+   * service restart. Not a chain secret — only authorizes the tunnel callback.
+   */
+  token?: string;
 }
 
 /** SSE event payload pushed to subscribers. */

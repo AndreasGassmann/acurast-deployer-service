@@ -99,6 +99,17 @@ describe("Deployments", () => {
     expect(d.view("done1")?.progress).toBe(1);
   });
 
+  it("restores the callback token from history so callbacks survive a restart", () => {
+    const d = new Deployments();
+    const records: HistoryRecord[] = [
+      { ts: NOW, id: "live1", template: "qvac", event: "created", phase: null, status: "created", public: false, token: "tok-123" },
+      { ts: NOW, id: "live1", template: "qvac", event: "x", phase: "env-set", status: "awaiting-tunnel", public: false },
+    ];
+    d.rebuildFrom(records);
+    expect(d.verifyToken("live1", "tok-123")).toBe(true);
+    expect(d.verifyToken("live1", "wrong")).toBe(false);
+  });
+
   it("keeps PHASE_ORDER and qvac estimates in sync", () => {
     // every phase must have an estimate (guards against a typo'd phase key)
     const d = new Deployments();

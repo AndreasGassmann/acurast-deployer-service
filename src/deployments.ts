@@ -190,7 +190,9 @@ export class Deployments {
           tunnelUrl: r.tunnelUrl ?? null,
           error: r.error ?? null,
           expiresAt: r.expiresAt ?? null,
-          token: "", // tokens are not persisted; replayed deploys can't be re-callbacked
+          // Restored from the persisted "created" record so callbacks still
+          // authenticate after a restart (empty if an older record lacks it).
+          token: r.token ?? "",
         };
         this.items.set(r.id, item);
       } else {
@@ -200,6 +202,7 @@ export class Deployments {
         if (r.tunnelUrl !== undefined) item.tunnelUrl = r.tunnelUrl;
         if (r.error !== undefined) item.error = r.error;
         if (r.expiresAt !== undefined) item.expiresAt = r.expiresAt;
+        if (r.token !== undefined) item.token = r.token;
       }
     }
     const inFlight: string[] = [];

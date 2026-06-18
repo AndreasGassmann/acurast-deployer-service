@@ -123,7 +123,8 @@ export class Orchestrator {
 
     const now = this.clock.nowIso();
     const { id, token } = this.deployments.create(templateId, isPublic, now);
-    await this.record(id, "created", null);
+    // Persist the token once so callbacks still authenticate after a restart.
+    await this.record(id, "created", null, { token });
 
     const callbackUrl = `${this.config.apiBaseUrl}/api/tunnel/${id}?token=${token}`;
     console.log(`[orchestrator] start id=${id} template=${template.id} public=${isPublic}`);
@@ -218,8 +219,8 @@ export class Orchestrator {
     for (const id of ids) {
       const item = this.deployments.get(id);
       if (!item) continue;
-      // tokens are not persisted, so resumed deploys can't receive a callback;
-      // give them a fresh timeout window and let them time out if nothing arrives.
+      // The token is persisted, so a resumed deploy can still receive its workload
+      // callback. Re-arm a fresh tunnel-wait window in case nothing arrives.
       this.armTunnelTimeout(id);
     }
   }
@@ -263,7 +264,12 @@ export class Orchestrator {
   }
 
   /** Persist to history + publish SSE for the current view. */
-  private async record(id: string, event: string, phase: Phase | null): Promise<void> {
+  private async record(
+    id: string,
+    event: string,
+    phase: Phase | null,
+    extra: { token?: string } = {},
+  ): Promise<void> {
     const view = this.deployments.view(id);
     if (!view) return;
     await this.history.append({
@@ -277,6 +283,7 @@ export class Orchestrator {
       ...(view.tunnelUrl ? { tunnelUrl: view.tunnelUrl } : {}),
       ...(view.error ? { error: view.error } : {}),
       ...(view.expiresAt ? { expiresAt: view.expiresAt } : {}),
+      ...(extra.token ? { token: extra.token } : {}),
     });
     const progress: ProgressEvent = {
       id,
