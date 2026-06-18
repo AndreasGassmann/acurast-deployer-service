@@ -1,5 +1,5 @@
 # --- build stage ---
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY .npmrc package.json package-lock.json ./
 RUN npm ci
@@ -9,7 +9,7 @@ COPY scripts ./scripts
 RUN npm run build && npm prune --omit=dev
 
 # --- runtime stage ---
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules

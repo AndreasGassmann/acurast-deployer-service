@@ -3,7 +3,7 @@
 #   docker compose build web   (compose sets context: . , dockerfile: web/Dockerfile)
 
 # --- build the static site ---
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /web
 COPY web/package.json web/package-lock.json* ./
 RUN npm install

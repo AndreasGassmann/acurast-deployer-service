@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Self-hosted service that deploys curated workloads to Acurast and tracks tunnel registration",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
