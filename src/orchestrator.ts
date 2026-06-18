@@ -105,6 +105,7 @@ export class Orchestrator {
     await this.record(id, "created", null);
 
     const callbackUrl = `${this.config.apiBaseUrl}/api/tunnel/${id}?token=${token}`;
+    console.log(`[orchestrator] start id=${id} template=${template.id} public=${isPublic}`);
 
     // Detached: run the deploy without blocking the HTTP response.
     void this.runDeployment(id, template.id, callbackUrl);
@@ -124,8 +125,10 @@ export class Orchestrator {
         },
       });
       // SDK stream ended (at env-set). Arm the tunnel-wait timeout.
+      console.log(`[orchestrator] id=${id} phase A done; awaiting tunnel callback`);
       this.armTunnelTimeout(id);
     } catch (err) {
+      console.error(`[orchestrator] id=${id} deploy failed:`, err);
       await this.fail(id, err instanceof Error ? err.message : String(err));
     }
   }
@@ -138,7 +141,11 @@ export class Orchestrator {
 
   /** Handle a workload callback event. Returns false if id/token invalid. */
   async handleCallback(id: string, token: string, event: CallbackEvent): Promise<boolean> {
-    if (!this.deployments.verifyToken(id, token)) return false;
+    if (!this.deployments.verifyToken(id, token)) {
+      console.warn(`[orchestrator] callback rejected: bad id/token id=${id}`);
+      return false;
+    }
+    console.log(`[orchestrator] callback id=${id} event=${event.event}`);
 
     if (event.event === "error" || event.event === "model_error") {
       await this.fail(id, event.message ?? "workload reported error");

@@ -6,6 +6,7 @@
  * The SDK is reached through an injectable `DeployDeps` so the orchestrator can be
  * unit-tested without a live chain / IPFS.
  */
+import { dirname, isAbsolute, resolve } from "node:path";
 import type { Config } from "./config.js";
 import type { Phase } from "./types.js";
 import type { Template } from "./templates/index.js";
@@ -68,10 +69,35 @@ export interface RunDeployArgs {
 export async function runDeploy(args: RunDeployArgs): Promise<void> {
   const { config, template, callbackUrl, onPhase, deps } = args;
 
+  console.log(
+    `[deployer] start template=${template.id} project=${template.projectName} ` +
+      `configPath=${template.acurastConfigPath}`,
+  );
+
   const acurastConfig = deps.loadAcurastConfig({
     filePath: template.acurastConfigPath,
     project: template.projectName,
   });
+
+  // The SDK stats `fileUrl` relative to process.cwd() (see checkIsFolder /
+  // zipFolder in @acurast/sdk). Our acurast.json uses a relative `fileUrl`
+  // ("app") which only resolves from the template dir, not from wherever the
+  // server is launched — on the server that yields `ENOENT stat 'app'`. Rebase
+  // any relative, non-ipfs fileUrl to an absolute path next to the acurast.json.
+  const cfg = acurastConfig as { fileUrl?: string };
+  if (cfg && typeof cfg.fileUrl === "string") {
+    const original = cfg.fileUrl;
+    if (!original.startsWith("ipfs://") && !isAbsolute(original)) {
+      const resolved = resolve(dirname(template.acurastConfigPath), original);
+      cfg.fileUrl = resolved;
+      console.log(`[deployer] rebased fileUrl '${original}' -> '${resolved}' (cwd=${process.cwd()})`);
+    } else {
+      console.log(`[deployer] fileUrl '${original}' left as-is (absolute or ipfs)`);
+    }
+  } else {
+    console.warn(`[deployer] acurast config has no string fileUrl; SDK may fail to locate payload`);
+  }
+
   const job = deps.convertConfigToJob(acurastConfig);
   const wallet = await deps.walletFromMnemonic(config.acurastMnemonic);
 
@@ -79,6 +105,10 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
     callbackUrl,
     domainSuffix: config.domainSuffix,
   });
+  console.log(
+    `[deployer] deploying: rpc=${config.rpcWss} ipfs=${config.ipfsEndpoint} ` +
+      `callbackUrl=${callbackUrl} envKeys=[${Object.keys(envVars).join(",")}]`,
+  );
 
   await deps.deployProject(acurastConfig, job, {
     wallet,
@@ -87,7 +117,9 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
     envVars,
     statusCallback: (status: string) => {
       const phase = sdkStatusToPhase(status);
+      console.log(`[deployer] sdk status='${status}' -> phase=${phase ?? "(unmapped)"}`);
       if (phase) onPhase(phase);
     },
   });
+  console.log(`[deployer] deployProject resolved (phase A complete) for template=${template.id}`);
 }
