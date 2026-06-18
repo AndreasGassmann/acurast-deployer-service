@@ -1,0 +1,71 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout>
+  <header class="hero">
+    <div class="wrap">
+      <span class="badge">Acurast · QVAC</span>
+      <h1>Your own <span class="grad">private AI</span>,<br />deployed in one click.</h1>
+      <p class="lead">
+        QVAC runs a private on-device LLM inference server on a real Acurast
+        processor — an OpenAI-compatible chat API and UI, reachable over a secure
+        Acurast Tunnel. No servers to manage, no data leaving the device.
+      </p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="grid">
+      <div class="card">
+        <h3>On-device inference</h3>
+        <p>The model runs directly on an Acurast phone via the QVAC runtime. Prompts stay on the device.</p>
+      </div>
+      <div class="card">
+        <h3>OpenAI-compatible</h3>
+        <p>Talk to it with the standard <code>/v1/chat/completions</code> API, or use the bundled chat UI.</p>
+      </div>
+      <div class="card">
+        <h3>Secure tunnel</h3>
+        <p>Exposed through an Acurast Tunnel at <code>https://&lt;id&gt;.tunnel.acurast.dev</code> — no DNS setup.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="deploy">
+      <h2>Deploy QVAC</h2>
+      <p class="sub">Spins up a fresh QVAC deployment on Acurast. Takes a few minutes; you'll get a live URL when the tunnel is up.</p>
+
+      <div class="row">
+        <button class="deploy" id="deployBtn">Deploy now</button>
+        <label class="toggle">
+          <input type="checkbox" id="publicToggle" checked />
+          List publicly (others can try it)
+        </label>
+      </div>
+
+      <div class="progress" id="progress">
+        <div class="bar"><span id="barFill"></span></div>
+        <div class="statusline">
+          <span class="phase-label" id="phaseLabel">Starting…</span>
+          <span id="etaLabel"></span>
+        </div>
+        <ul class="steps" id="steps"></ul>
+      </div>
+
+      <div class="result" id="result"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Public deployments</h2>
+      <p class="sub">Live QVAC instances others have deployed and shared. Click to open.</p>
+      <div class="deploy-list" id="publicList"><span class="empty">Loading…</span></div>
+    </section>
+  </main>
+
+  <footer>
+    Built on <a href="https://acurast.com" target="_blank" rel="noreferrer">Acurast</a> ·
+    <a href="https://github.com/Acurast/acurast-qvac" target="_blank" rel="noreferrer">acurast-qvac</a>
+  </footer>
+
+  <script src="../scripts/app.ts"></script>
+</Layout>

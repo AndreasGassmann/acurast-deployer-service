@@ -1,0 +1,17 @@
+---
+import "../styles/global.css";
+const { title = "Acurast QVAC — one-click private AI" } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Deploy a private, on-device LLM on the Acurast network in one click. OpenAI-compatible API behind an Acurast Tunnel." />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

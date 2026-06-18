@@ -1,0 +1,145 @@
+# Acurast Deployer Service
+
+A small self-hosted service that holds an Acurast deployer mnemonic and deploys
+curated workloads to the Acurast network via [`@acurast/sdk`](https://www.npmjs.com/package/@acurast/sdk).
+It has simple API-key access control, records deployment history to a JSONL file
+(no database), streams live progress over SSE, and learns the registered
+**Acurast Tunnel** URL via an inbound webhook the deployed workload calls back.
+
+A companion **Astro** landing page explains the [`acurast-qvac`](https://github.com/Acurast/acurast-qvac)
+project (a private on-device LLM server) and offers a one-click deploy with live
+progress, ETAs, the final tunnel URL, and a list of public deployments.
+
+- `qvac.acurast.dev` — landing page (static)
+- `api.qvac.acurast.dev` — backend API
+
+## Architecture
+
+```
+        qvac.acurast.dev            api.qvac.acurast.dev
+              │                            │
+         ┌────▼────────────────────────────▼────┐
+         │            Caddy (auto-TLS)            │
+         └────┬────────────────────────────┬─────┘
+   static     │                            │ reverse proxy
+   Astro build│                            │
+              ▼                   ┌─────────▼──────────────┐
+        (one-click deploy)        │  Express API (holds     │
+                                  │  mnemonic) @acurast/sdk │
+                                  └─────────┬──────────────┘
+                                            │ deploy
+                                            ▼  Acurast network
+                                            │ workload POSTs lifecycle
+                                  POST /api/tunnel/:id?token=…  (CALLBACK_URL)
+```
+
+A deployment runs in two phases:
+
+1. **Phase A (SDK):** `deployProject` streams statuses, mapped to
+   `uploaded → prepared → submitted → matching → matched → ack → env-set`.
+2. **Phase B (workload):** after env vars are set the workload boots, opens the
+   Acurast Tunnel, and POSTs lifecycle events to the per-deployment `CALLBACK_URL`:
+   `started` (carries the tunnel `url`) → `model_loading` → `model_ready`.
+
+There is no protocol-level time estimate, so per-phase ETAs are hardcoded per
+template (`src/templates/qvac.ts`).
+
+## Prerequisites
+
+- **Funded mnemonic** — the deployer account must hold cACU (canary) to pay for
+  deployments.
+- **IPFS endpoint + API key** — deployment code is bundled and uploaded to IPFS.
+- **No DNS work** for tunnels — `DOMAIN_SUFFIX` defaults to the shared,
+  Acurast-managed `tunnel.acurast.dev` zone (wildcard A + `_acu` TXT already
+  published). Only a custom vanity domain needs your own records.
+- **Public DNS for the two app domains** if you want Caddy auto-TLS:
+  `qvac.acurast.dev` and `api.qvac.acurast.dev` → your host.
+
+## Configuration
+
+Copy `.env.example` to `.env` and fill it in. All variables:
+
+| Var | Required | Notes |
+|---|---|---|
+| `ACURAST_MNEMONIC` | yes | Deployer seed. Never logged, never in history. |
+| `RPC_WSS` | yes | Substrate RPC websocket (canary by default). |
+| `IPFS_ENDPOINT` / `IPFS_API_KEY` | yes | IPFS upload target. |
+| `API_BASE_URL` | yes | Public URL of this API; used to mint `CALLBACK_URL`. |
+| `API_KEYS` | yes | Comma-separated full-access keys. |
+| `PUBLIC_DEPLOY_KEY` | yes | qvac-only, rate-limited key baked into the landing page. |
+| `DOMAIN_SUFFIX` | no | Defaults to `tunnel.acurast.dev`. |
+| `PORT` | no | Default `8080`. |
+| `DATA_DIR` | no | Default `./data`. |
+| `PUBLIC_DEPLOY_RATE_PER_HOUR` | no | Default `5`. |
+
+## Local development
+
+```bash
+npm install            # uses .npmrc legacy-peer-deps (Acurast/polkadot peer ranges)
+npm test               # 43 unit/integration tests (SDK + chain mocked)
+npm run typecheck
+npm run dev            # tsx watch on src/server.ts
+
+cd web && npm install && npm run dev   # Astro landing page
+```
+
+## Docker
+
+```bash
+cp .env.example .env   # fill in real values
+docker compose up -d --build
+```
+
+- `api` — the Express service (history persisted to `./data`).
+- `caddy` — builds the Astro site, serves `qvac.acurast.dev`, reverse-proxies
+  `api.qvac.acurast.dev → api:8080`, and handles TLS automatically.
+
+The landing page bakes `PUBLIC_API_BASE` (= `API_BASE_URL`) and
+`PUBLIC_DEPLOY_KEY` at build time via the `caddy` build args in
+`docker-compose.yml`.
+
+## API
+
+All endpoints under `api.qvac.acurast.dev`. Auth via `x-api-key` header (or
+`Authorization: Bearer <key>`).
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/healthz` | none | liveness |
+| `GET` | `/templates` | key | list templates |
+| `POST` | `/deployments` | key | `{template, params, public}` → `202 {id}` |
+| `GET` | `/deployments/:id` | key¹ | current state (poll) |
+| `GET` | `/deployments/:id/events` | key¹ | SSE progress stream |
+| `GET` | `/deployments` | full key, or `?public=true` (no key) | history list |
+| `POST` | `/api/tunnel/:id?token=…` | per-deploy token | inbound workload callback |
+
+¹ public deployments are readable without a key.
+
+The **public deploy key** may only deploy the `qvac` template and is rate-limited
+per IP, so it is safe to expose in the static landing page.
+
+## The qvac payload
+
+`src/templates/qvac/acurast.json` is a faithful manifest (Shell runtime, canary,
+`includeEnvironmentVariables: ["CALLBACK_URL","DOMAIN_SUFFIX"]`). Before a real
+deploy you must vendor the deployable payload from
+[`Acurast/acurast-qvac`](https://github.com/Acurast/acurast-qvac):
+
+1. Copy its `app/` directory to `src/templates/qvac/app/` (so `fileUrl: "app"`
+   resolves next to the manifest).
+2. Replace `image.sha256` with the upstream image digest.
+
+The workload already POSTs `started`/`model_ready` to `CALLBACK_URL`, which this
+service injects automatically.
+
+## Caveats (verify before a live deploy)
+
+- `@acurast/sdk` is reached through an injectable interface (`src/deployer.ts`);
+  signatures were verified against the published types but **no live on-chain
+  deploy** has been run here — confirm `deployProject` argument shapes against the
+  SDK before relying on it.
+- The `CALLBACK_URL` event convention is implemented by the workload, not a
+  protocol guarantee.
+- The shared `tunnel.acurast.dev` zone is a newer canary feature; subdomains are
+  ephemeral. Confirm the `_acu` preimage / relay IPs if you switch to a custom
+  domain.

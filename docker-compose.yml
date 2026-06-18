@@ -1,0 +1,36 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      PORT: "8080"
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    expose:
+      - "8080"
+
+  caddy:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        # Baked into the static landing page at build time.
+        PUBLIC_API_BASE: ${API_BASE_URL:-https://api.qvac.acurast.dev}
+        PUBLIC_DEPLOY_KEY: ${PUBLIC_DEPLOY_KEY:-changeme-public-qvac-key}
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
