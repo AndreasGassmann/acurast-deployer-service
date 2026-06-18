@@ -178,11 +178,11 @@ describe("HTTP API", () => {
     const { id, token } = deployments.create("qvac", false, new Date().toISOString());
     await request(app)
       .post(`/api/tunnel/${id}?token=wrong`)
-      .send({ event: "started", url: "https://x" })
+      .send({ event: "started", webUrl: "https://x" })
       .expect(403);
     await request(app)
       .post(`/api/tunnel/${id}?token=${token}`)
-      .send({ event: "started", url: "https://abc.tunnel.acurast.dev:8443" })
+      .send({ event: "started", webUrl: "https://abc.tunnel.acurast.dev:8443" })
       .expect(200);
     expect(deployments.view(id)?.tunnelUrl).toBe("https://abc.tunnel.acurast.dev:8443");
   });

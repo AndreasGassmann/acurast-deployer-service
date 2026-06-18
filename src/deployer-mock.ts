@@ -48,8 +48,7 @@ export function mockDeps(): DeployDeps {
           await delay(1000);
           await post(callbackUrl, {
             event: "started",
-            url: "https://mock-clientid.tunnel.acurast.dev:8443",
-            port: 8080,
+            webUrl: "https://mock-clientid.tunnel.acurast.dev:8443",
           });
           await delay(1200);
           await post(callbackUrl, { event: "model_loading" });

@@ -1,0 +1,14 @@
+{
+  "name": "acurast-qvac-llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "QVAC SDK LLM server for an Acurast Cargo deployment",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@qvac/sdk": "^0.13.1"
+  }
+}

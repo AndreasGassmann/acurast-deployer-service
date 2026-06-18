@@ -124,17 +124,26 @@ per IP, so it is safe to expose in the static landing page.
 
 ## The qvac payload
 
-`src/templates/qvac/acurast.json` is a faithful manifest (Shell runtime, canary,
-`includeEnvironmentVariables: ["CALLBACK_URL","DOMAIN_SUFFIX"]`). Before a real
-deploy you must vendor the deployable payload from
-[`Acurast/acurast-qvac`](https://github.com/Acurast/acurast-qvac):
+The real [`Acurast/acurast-qvac`](https://github.com/Acurast/acurast-qvac) project
+is **vendored** under `src/templates/qvac/`:
 
-1. Copy its `app/` directory to `src/templates/qvac/app/` (so `fileUrl: "app"`
-   resolves next to the manifest).
-2. Replace `image.sha256` with the upstream image digest.
+- `acurast.json` — the upstream manifest verbatim (project `qvac-llm`, Shell
+  runtime, canary, the termux proot Ubuntu image + its real `sha256`,
+  `includeEnvironmentVariables: ["CALLBACK_URL","DOMAIN_SUFFIX"]`).
+- `app/` — the deployable payload (`start.sh`, `server.mjs`, `tunnel.py`,
+  `callback.sh`, `www/`, …). `fileUrl: "app"` resolves next to the manifest.
+- `UPSTREAM_COMMIT` — the source commit it was vendored from.
 
-The workload already POSTs `started`/`model_ready` to `CALLBACK_URL`, which this
-service injects automatically.
+The build copies these into `dist/templates/qvac/`. To refresh from upstream:
+
+```bash
+sh scripts/vendor-qvac.sh
+```
+
+This service injects `CALLBACK_URL` + `DOMAIN_SUFFIX` as encrypted env vars; the
+workload's `tunnel.py` / `callback.sh` POST lifecycle events back — `started`
+(carries `webUrl`), `model_loading`, `model_ready`, and `model_error` — which the
+orchestrator maps to phases and the final tunnel URL.
 
 ## Caveats (verify before a live deploy)
 

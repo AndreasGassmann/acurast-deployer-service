@@ -125,7 +125,7 @@ describe("Orchestrator", () => {
     // workload reports tunnel up
     await orchestrator.handleCallback(id, deployments.get(id)!.token, {
       event: "started",
-      url: "https://abc.tunnel.acurast.dev:8443",
+      webUrl: "https://abc.tunnel.acurast.dev:8443",
     });
     expect(deployments.view(id)?.tunnelUrl).toBe("https://abc.tunnel.acurast.dev:8443");
 
@@ -169,6 +169,20 @@ describe("Orchestrator", () => {
     advance(1000); // fire the tunnel timeout
     await flush();
     expect(deployments.view(id)?.status).toBe("timed-out");
+  });
+
+  it("fails the deployment on a model_error callback", async () => {
+    const { clock } = makeClock();
+    const { orchestrator, deployments } = build(fakeDeps(), clock);
+    const id = await orchestrator.start("qvac", {}, false);
+    await flush();
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, {
+      event: "model_error",
+      message: "oom loading model",
+    });
+    const v = deployments.view(id)!;
+    expect(v.status).toBe("failed");
+    expect(v.error).toMatch(/oom/);
   });
 
   it("rejects a callback with a bad token", async () => {

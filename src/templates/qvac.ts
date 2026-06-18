@@ -28,7 +28,8 @@ export const qvacTemplate: Template = {
     "Private on-device LLM inference server (OpenAI-compatible API + chat UI) " +
     "running on an Acurast processor, exposed via an Acurast Tunnel.",
   acurastConfigPath: join(here, "qvac", "acurast.json"),
-  projectName: "qvac",
+  // The vendored acurast.json names its project "qvac-llm" (template id stays "qvac").
+  projectName: "qvac-llm",
   paramSchema,
   injectedEnv: ({ callbackUrl, domainSuffix }) => ({
     CALLBACK_URL: callbackUrl,

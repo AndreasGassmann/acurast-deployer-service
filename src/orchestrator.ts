@@ -31,11 +31,19 @@ export const systemClock: Clock = {
   },
 };
 
-/** Lifecycle event shape POSTed by the workload to CALLBACK_URL. */
+/**
+ * Lifecycle event shape POSTed by the workload to CALLBACK_URL.
+ * Matches the acurast-qvac payload: `started` carries `webUrl` (tunnel.py /
+ * callback.sh), model events carry `model`, errors carry `message`.
+ */
 export interface CallbackEvent {
-  event: "started" | "model_loading" | "model_ready" | "log" | "error";
+  event: "started" | "model_loading" | "model_ready" | "model_error" | "log" | "error";
+  /** Tunnel URL on the `started` event (real field name). */
+  webUrl?: string;
+  /** Accepted as a fallback for `webUrl`. */
   url?: string;
   message?: string;
+  model?: string;
 }
 
 const CALLBACK_TO_PHASE: Record<string, Phase> = {
@@ -132,7 +140,7 @@ export class Orchestrator {
   async handleCallback(id: string, token: string, event: CallbackEvent): Promise<boolean> {
     if (!this.deployments.verifyToken(id, token)) return false;
 
-    if (event.event === "error") {
+    if (event.event === "error" || event.event === "model_error") {
       await this.fail(id, event.message ?? "workload reported error");
       return true;
     }
@@ -145,8 +153,9 @@ export class Orchestrator {
     if (!phase) return true;
 
     const now = this.clock.nowIso();
-    if (event.event === "started" && event.url) {
-      this.deployments.setStatus(id, "awaiting-tunnel", now, { tunnelUrl: event.url });
+    const tunnelUrl = event.webUrl ?? event.url;
+    if (event.event === "started" && tunnelUrl) {
+      this.deployments.setStatus(id, "awaiting-tunnel", now, { tunnelUrl });
     }
     this.deployments.setPhase(id, phase, now);
     await this.record(id, `callback:${event.event}`, phase);
