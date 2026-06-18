@@ -1,0 +1,27 @@
+{
+  "projects": {
+    "qvac": {
+      "projectName": "qvac",
+      "fileUrl": "app",
+      "network": "canary",
+      "runtime": "Shell",
+      "requiredModules": ["Shell"],
+      "image": {
+        "url": "https://github.com/Acurast/acurast-qvac/releases/download/base/ubuntu-aarch64.tar.gz",
+        "sha256": "REPLACE_WITH_UPSTREAM_IMAGE_SHA256"
+      },
+      "onlyAttestedDevices": true,
+      "assignmentStrategy": { "type": "Single" },
+      "execution": { "type": "onetime", "maxExecutionTimeInMs": 7200000 },
+      "maxAllowedStartDelayInMs": 30000,
+      "usageLimit": { "maxMemory": 0, "maxNetworkRequests": 0, "maxStorage": 0 },
+      "numberOfReplicas": 1,
+      "minProcessorReputation": 0,
+      "maxCostPerExecution": 1000000000000,
+      "includeEnvironmentVariables": ["CALLBACK_URL", "DOMAIN_SUFFIX"],
+      "processorWhitelist": [],
+      "mutability": "Immutable",
+      "restartPolicy": "no"
+    }
+  }
+}

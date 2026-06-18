@@ -1,0 +1,82 @@
+/** Shared domain types for deployments, phases, and history records. */
+
+/** Overall lifecycle status of a deployment. */
+export type DeploymentStatus =
+  | "created"
+  | "deploying" // SDK phase A in progress
+  | "awaiting-tunnel" // env vars set, waiting for workload callback
+  | "ready" // tunnel live + app ready
+  | "failed"
+  | "timed-out";
+
+/**
+ * Ordered phases a deployment passes through. Phase A (SDK statusCallback) then
+ * phase B (workload CALLBACK_URL events). Used to drive the progress bar + ETA.
+ */
+export type Phase =
+  // Phase A — emitted by the SDK deploy stream
+  | "uploaded"
+  | "prepared"
+  | "submitted"
+  | "matching"
+  | "matched"
+  | "ack"
+  | "env-set"
+  // Phase B — emitted by the deployed workload via CALLBACK_URL
+  | "started"
+  | "model-loading"
+  | "model-ready";
+
+export const PHASE_ORDER: Phase[] = [
+  "uploaded",
+  "prepared",
+  "submitted",
+  "matching",
+  "matched",
+  "ack",
+  "env-set",
+  "started",
+  "model-loading",
+  "model-ready",
+];
+
+/** Public, non-secret view of a deployment (safe to return over the API). */
+export interface DeploymentView {
+  id: string;
+  template: string;
+  status: DeploymentStatus;
+  phase: Phase | null;
+  public: boolean;
+  createdAt: string;
+  updatedAt: string;
+  tunnelUrl: string | null;
+  error: string | null;
+  /** Hardcoded per-template estimate (seconds) for the current phase. */
+  etaSeconds: number | null;
+  /** 0..1 progress derived from phase order. */
+  progress: number;
+}
+
+/** One line in history.jsonl. Never contains the mnemonic or secret params. */
+export interface HistoryRecord {
+  ts: string;
+  id: string;
+  template: string;
+  event: string;
+  phase: Phase | null;
+  status: DeploymentStatus;
+  public: boolean;
+  tunnelUrl?: string;
+  error?: string;
+}
+
+/** SSE event payload pushed to subscribers. */
+export interface ProgressEvent {
+  id: string;
+  status: DeploymentStatus;
+  phase: Phase | null;
+  progress: number;
+  etaSeconds: number | null;
+  tunnelUrl: string | null;
+  error: string | null;
+}
