@@ -9,13 +9,27 @@ import type { HistoryRecord } from "./types.js";
 
 export class History {
   private readonly filePath: string;
+  /** Serializes writes so concurrent appends keep file order. */
+  private tail: Promise<void> = Promise.resolve();
 
   constructor(dataDir: string) {
     this.filePath = join(dataDir, "history.jsonl");
   }
 
   /** Append one record as a single JSON line. Creates the dir/file if needed. */
-  async append(record: HistoryRecord): Promise<void> {
+  append(record: HistoryRecord): Promise<void> {
+    const next = this.tail.then(() => this.write(record));
+    // keep the chain alive even if a write fails, but surface errors to the caller
+    this.tail = next.catch(() => {});
+    return next;
+  }
+
+  /** Resolves once all queued appends have been flushed. */
+  drain(): Promise<void> {
+    return this.tail;
+  }
+
+  private async write(record: HistoryRecord): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     await appendFile(this.filePath, JSON.stringify(record) + "\n", "utf8");
   }

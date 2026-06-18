@@ -45,12 +45,13 @@ const fakeDeps: DeployDeps = {
 let dir: string;
 let deployments: Deployments;
 let orchestrator: Orchestrator;
+let history: History;
 let app: ReturnType<typeof createApp>;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "app-"));
   deployments = new Deployments();
-  const history = new History(dir);
+  history = new History(dir);
   const events = new EventHub();
   orchestrator = new Orchestrator({
     config,
@@ -64,7 +65,13 @@ beforeEach(async () => {
   app = createApp({ config, deployments, events, orchestrator });
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  // detached deploys keep writing history.jsonl after the response returns;
+  // let them finish and flush before removing the temp dir
+  for (let i = 0; i < 5; i++) {
+    await new Promise((r) => setImmediate(r));
+    await history.drain();
+  }
+  await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 describe("HTTP API", () => {

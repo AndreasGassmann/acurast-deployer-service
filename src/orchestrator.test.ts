@@ -88,7 +88,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "orch-"));
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 function build(deps: DeployDeps, clock: Clock) {
@@ -185,8 +185,8 @@ describe("Orchestrator", () => {
     const id = await orchestrator.start("qvac", { public: true }, true);
     await flush();
     await orchestrator.handleCallback(id, "x", { event: "log" }); // ignored
-    // let the fire-and-forget history.append writes settle to disk
-    await new Promise((r) => setTimeout(r, 30));
+    // deterministically wait for the serialized history writes to flush
+    await history.drain();
 
     const records = await history.readAll();
     const rebuilt = new Deployments();
