@@ -3,9 +3,10 @@
 # certresolver named in .env.
 #
 #   API_HOST, WEB_HOST           hostnames Traefik routes to these services
-#   TRAEFIK_NETWORK              the external docker network Traefik is attached to
+#   TRAEFIK_NETWORK              the external docker network Traefik is attached to (e.g. proxy)
 #   TRAEFIK_ENTRYPOINT           Traefik https entrypoint (e.g. websecure)
-#   TRAEFIK_CERTRESOLVER         Traefik ACME cert resolver name
+# TLS uses Traefik's file-provider certs (tls=true); add an acurast.dev cert to
+# your Traefik certs.yml. No ACME/certresolver is used.
 
 services:
   api:
@@ -23,11 +24,10 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-proxy}"
       - "traefik.http.routers.qvac-api.rule=Host(`${API_HOST:-qvac-api.acurast.dev}`)"
       - "traefik.http.routers.qvac-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.qvac-api.tls=true"
-      - "traefik.http.routers.qvac-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-le}"
       - "traefik.http.services.qvac-api.loadbalancer.server.port=8080"
 
   web:
@@ -43,14 +43,13 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-proxy}"
       - "traefik.http.routers.qvac-web.rule=Host(`${WEB_HOST:-qvac.acurast.dev}`)"
       - "traefik.http.routers.qvac-web.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.qvac-web.tls=true"
-      - "traefik.http.routers.qvac-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-le}"
       - "traefik.http.services.qvac-web.loadbalancer.server.port=80"
 
 networks:
   traefik:
     external: true
-    name: ${TRAEFIK_NETWORK:-traefik}
+    name: ${TRAEFIK_NETWORK:-proxy}

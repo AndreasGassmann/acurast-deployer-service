@@ -51,9 +51,11 @@ template (`src/templates/qvac.ts`).
 - **No DNS work** for tunnels — `DOMAIN_SUFFIX` defaults to the shared,
   Acurast-managed `tunnel.acurast.dev` zone (wildcard A + `_acu` TXT already
   published). Only a custom vanity domain needs your own records.
-- **Public DNS for the two app domains** → your host (DNS-only / grey-cloud so
-  Traefik's Let's Encrypt HTTP-01 works): `qvac.acurast.dev` and
-  `qvac-api.acurast.dev`.
+- **DNS + TLS for the two app domains**: `qvac.acurast.dev` and
+  `qvac-api.acurast.dev` point at your host. This setup uses Cloudflare
+  (proxied / orange-cloud) in front of Traefik, and Traefik serves a manual
+  origin cert from its file provider — add an `acurast.dev` cert to your
+  Traefik `certs.yml` (no ACME/certresolver).
 
 ## Configuration
 
@@ -98,10 +100,12 @@ docker compose up -d --build
   `API_HOST` on port 8080.
 - `web` — the Astro static build served by nginx. Labelled for `WEB_HOST`.
 
-Both containers join the external `TRAEFIK_NETWORK` and are routed by Host rule
-to the `TRAEFIK_ENTRYPOINT` with `TRAEFIK_CERTRESOLVER`. Adjust those `.env`
-values to match your Traefik config. The landing page bakes `PUBLIC_API_BASE`
-(= `API_BASE_URL`) and `PUBLIC_DEPLOY_KEY` at build time via the `web` build args.
+Both containers join the external `TRAEFIK_NETWORK` (e.g. `proxy`) and are routed
+by Host rule on the `TRAEFIK_ENTRYPOINT` (e.g. `websecure`) with `tls=true`. TLS
+uses Traefik's file-provider certs — add an `acurast.dev` cert to your Traefik
+`certs.yml` (no ACME). Adjust the `.env` values to match your Traefik. The landing
+page bakes `PUBLIC_API_BASE` (= `API_BASE_URL`) and `PUBLIC_DEPLOY_KEY` at build
+time via the `web` build args.
 
 ## API
 
