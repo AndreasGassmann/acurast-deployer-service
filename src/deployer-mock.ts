@@ -23,7 +23,8 @@ async function post(url: string, body: unknown): Promise<void> {
 export function mockDeps(): DeployDeps {
   return {
     loadAcurastConfig: () => ({ mock: true }),
-    convertConfigToJob: () => ({ mock: true }),
+    // Mirror the real job's concrete schedule; short window so expiry is testable locally.
+    convertConfigToJob: () => ({ schedule: { endTime: Date.now() + 2 * 60 * 1000 } }),
     walletFromMnemonic: async () => ({ address: "mock" }),
     deployProject: async (_config, _job, options) => {
       const seq = [

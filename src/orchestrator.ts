@@ -61,9 +61,13 @@ export interface OrchestratorOptions {
   clock?: Clock;
   /** ms to wait for the workload tunnel callback before timing out. */
   tunnelTimeoutMs?: number;
+  /** ms a failed/timed-out/expired deploy lingers before cleanup. */
+  cleanupRetentionMs?: number;
 }
 
 const DEFAULT_TUNNEL_TIMEOUT_MS = 15 * 60 * 1000;
+/** How long failed/timed-out/expired deploys linger before cleanup. */
+const DEFAULT_CLEANUP_RETENTION_MS = 60 * 60 * 1000;
 
 export class Orchestrator {
   private readonly config: Config;
@@ -73,6 +77,7 @@ export class Orchestrator {
   private readonly deps: DeployDeps;
   private readonly clock: Clock;
   private readonly tunnelTimeoutMs: number;
+  private readonly cleanupRetentionMs: number;
   private readonly timers = new Map<string, () => void>();
 
   constructor(opts: OrchestratorOptions) {
@@ -83,6 +88,22 @@ export class Orchestrator {
     this.deps = opts.deps;
     this.clock = opts.clock ?? systemClock;
     this.tunnelTimeoutMs = opts.tunnelTimeoutMs ?? DEFAULT_TUNNEL_TIMEOUT_MS;
+    this.cleanupRetentionMs = opts.cleanupRetentionMs ?? DEFAULT_CLEANUP_RETENTION_MS;
+  }
+
+  /**
+   * Periodic maintenance: expire ready deploys past their run window, then drop
+   * non-working deploys that have aged out. Safe to call repeatedly (boot + interval).
+   */
+  async sweep(nowMs: number): Promise<void> {
+    for (const id of this.deployments.dueForExpiry(nowMs)) {
+      console.log(`[orchestrator] id=${id} run window elapsed; marking expired`);
+      await this.setTerminal(id, "expired");
+    }
+    const removed = this.deployments.pruneOld(nowMs, this.cleanupRetentionMs);
+    if (removed.length > 0) {
+      console.log(`[orchestrator] cleaned up ${removed.length} old deployment(s): ${removed.join(", ")}`);
+    }
   }
 
   /**
@@ -123,6 +144,9 @@ export class Orchestrator {
         onPhase: (phase) => {
           void this.onPhase(id, phase);
         },
+        onScheduledEnd: (endTimeMs) => {
+          this.deployments.setExpiry(id, new Date(endTimeMs).toISOString());
+        },
       });
       // SDK stream ended (at env-set). Arm the tunnel-wait timeout.
       console.log(`[orchestrator] id=${id} phase A done; awaiting tunnel callback`);
@@ -145,7 +169,15 @@ export class Orchestrator {
       console.warn(`[orchestrator] callback rejected: bad id/token id=${id}`);
       return false;
     }
-    console.log(`[orchestrator] callback id=${id} event=${event.event}`);
+    // Log the meaningful body fields, not just the event name.
+    const detail = [
+      event.message ? `message=${JSON.stringify(event.message)}` : null,
+      event.webUrl ?? event.url ? `url=${event.webUrl ?? event.url}` : null,
+      event.model ? `model=${event.model}` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    console.log(`[orchestrator] callback id=${id} event=${event.event}${detail ? ` ${detail}` : ""}`);
 
     if (event.event === "error" || event.event === "model_error") {
       await this.fail(id, event.message ?? "workload reported error");
@@ -168,6 +200,7 @@ export class Orchestrator {
     await this.record(id, `callback:${event.event}`, phase);
 
     if (phase === "model-ready") {
+      // Live; the run window (expiry) was already set from the job schedule at deploy.
       this.clearTimer(id);
     }
     return true;
@@ -236,6 +269,7 @@ export class Orchestrator {
       public: view.public,
       ...(view.tunnelUrl ? { tunnelUrl: view.tunnelUrl } : {}),
       ...(view.error ? { error: view.error } : {}),
+      ...(view.expiresAt ? { expiresAt: view.expiresAt } : {}),
     });
     const progress: ProgressEvent = {
       id,

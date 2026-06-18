@@ -13,7 +13,13 @@ import type {
 } from "./types.js";
 import { getTemplate } from "./templates/index.js";
 
-const TERMINAL: DeploymentStatus[] = ["ready", "failed", "timed-out"];
+const TERMINAL: DeploymentStatus[] = ["ready", "expired", "failed", "timed-out"];
+
+/** Statuses hidden from the public gallery (dead/unhelpful to browsers). */
+const HIDDEN_FROM_PUBLIC: DeploymentStatus[] = ["failed", "timed-out", "expired"];
+
+/** Non-working terminal states eligible for cleanup once they age out. */
+const CLEANUP_STATUSES: DeploymentStatus[] = ["failed", "timed-out", "expired"];
 
 interface Internal {
   id: string;
@@ -25,6 +31,8 @@ interface Internal {
   updatedAt: string;
   tunnelUrl: string | null;
   error: string | null;
+  /** When a ready deployment stops running (ISO); null until ready. */
+  expiresAt: string | null;
   /** Per-deployment unguessable token authorizing the tunnel callback. */
   token: string;
 }
@@ -58,6 +66,7 @@ export class Deployments {
       updatedAt: now,
       tunnelUrl: null,
       error: null,
+      expiresAt: null,
       token,
     });
     return { id, token };
@@ -100,6 +109,39 @@ export class Deployments {
     if (opts.tunnelUrl !== undefined) item.tunnelUrl = opts.tunnelUrl;
   }
 
+  /** Record when a ready deployment will stop running. */
+  setExpiry(id: string, expiresAtIso: string): void {
+    const item = this.items.get(id);
+    if (item) item.expiresAt = expiresAtIso;
+  }
+
+  /** Ids of ready deployments whose run window has elapsed. */
+  dueForExpiry(nowMs: number): string[] {
+    const out: string[] = [];
+    for (const item of this.items.values()) {
+      if (item.status === "ready" && item.expiresAt && Date.parse(item.expiresAt) <= nowMs) {
+        out.push(item.id);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Delete non-working terminal deployments (failed/timed-out/expired) last
+   * updated longer ago than `retentionMs`. Returns the removed ids.
+   */
+  pruneOld(nowMs: number, retentionMs: number): string[] {
+    const removed: string[] = [];
+    for (const item of this.items.values()) {
+      if (!CLEANUP_STATUSES.includes(item.status)) continue;
+      if (nowMs - Date.parse(item.updatedAt) >= retentionMs) {
+        this.items.delete(item.id);
+        removed.push(item.id);
+      }
+    }
+    return removed;
+  }
+
   /** Compute the public, progress-annotated view of a deployment. */
   view(id: string): DeploymentView | undefined {
     const item = this.items.get(id);
@@ -111,10 +153,10 @@ export class Deployments {
     const out: DeploymentView[] = [];
     for (const item of this.items.values()) {
       if (opts.publicOnly && !item.public) continue;
-      // Failed/timed-out deploys are hidden from the public gallery — the
+      // Failed/timed-out/expired deploys are hidden from the public gallery — the
       // deployer still sees their own outcome via the direct /deployments/:id
-      // lookup (they hold the id). Keeps stale failures off the shared list.
-      if (opts.publicOnly && (item.status === "failed" || item.status === "timed-out")) continue;
+      // lookup (they hold the id). Keeps stale/dead entries off the shared list.
+      if (opts.publicOnly && HIDDEN_FROM_PUBLIC.includes(item.status)) continue;
       out.push(this.toView(item));
     }
     // newest first
@@ -141,6 +183,7 @@ export class Deployments {
           updatedAt: r.ts,
           tunnelUrl: r.tunnelUrl ?? null,
           error: r.error ?? null,
+          expiresAt: r.expiresAt ?? null,
           token: "", // tokens are not persisted; replayed deploys can't be re-callbacked
         };
         this.items.set(r.id, item);
@@ -150,6 +193,7 @@ export class Deployments {
         item.updatedAt = r.ts;
         if (r.tunnelUrl !== undefined) item.tunnelUrl = r.tunnelUrl;
         if (r.error !== undefined) item.error = r.error;
+        if (r.expiresAt !== undefined) item.expiresAt = r.expiresAt;
       }
     }
     const inFlight: string[] = [];
@@ -171,6 +215,7 @@ export class Deployments {
       updatedAt: item.updatedAt,
       tunnelUrl: item.tunnelUrl,
       error: item.error,
+      expiresAt: item.expiresAt,
       etaSeconds,
       progress,
     };
@@ -178,6 +223,7 @@ export class Deployments {
 
   private computeProgress(item: Internal): { progress: number; etaSeconds: number | null } {
     if (item.status === "ready") return { progress: 1, etaSeconds: 0 };
+    if (item.status === "expired") return { progress: 1, etaSeconds: null };
     if (item.status === "failed" || item.status === "timed-out") {
       return { progress: this.phaseProgress(item.phase), etaSeconds: null };
     }

@@ -41,6 +41,14 @@ async function main(): Promise<void> {
   // Re-arm tunnel-wait timeouts for deploys that were in flight at shutdown.
   orchestrator.resumeInFlight(inFlight);
 
+  // Expire ready deploys past their run window + clean up old non-working ones.
+  // Runs once now (clears anything stale from before the restart) then periodically.
+  const SWEEP_INTERVAL_MS = 60 * 1000;
+  await orchestrator.sweep(Date.now());
+  setInterval(() => {
+    void orchestrator.sweep(Date.now());
+  }, SWEEP_INTERVAL_MS).unref();
+
   const app = createApp({ config, deployments, events, orchestrator });
   app.listen(config.port, () => {
     // eslint-disable-next-line no-console

@@ -65,7 +65,8 @@ const flush = () => new Promise<void>((r) => setImmediate(r));
 function fakeDeps(opts: { fail?: boolean } = {}): DeployDeps {
   return {
     loadAcurastConfig: () => ({}),
-    convertConfigToJob: () => ({}),
+    // Mirrors the real SDK: the job carries a concrete schedule end time (ms).
+    convertConfigToJob: () => ({ schedule: { endTime: 7200 * 1000 } }),
     walletFromMnemonic: async () => ({}),
     deployProject: async (_c, _j, options) => {
       if (opts.fail) throw new Error("chain rejected");
@@ -134,6 +135,47 @@ describe("Orchestrator", () => {
     expect(v.status).toBe("ready");
     expect(v.progress).toBe(1);
     expect(seen.at(-1)?.status).toBe("ready");
+  });
+
+  it("expires a ready deployment once its run window elapses", async () => {
+    const { clock, advance } = makeClock();
+    const { orchestrator, deployments } = build(fakeDeps(), clock);
+    const id = await orchestrator.start("qvac", {}, true);
+    await flush();
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, {
+      event: "started",
+      webUrl: "https://abc.tunnel.acurast.dev:8443",
+    });
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, { event: "model_ready" });
+    expect(deployments.view(id)?.status).toBe("ready");
+    // qvac maxRunSeconds = 7200; expiry is anchored at ready (clock ms = 0).
+    expect(deployments.view(id)?.expiresAt).toBe(new Date(7200 * 1000).toISOString());
+
+    advance(7200 * 1000 - 1);
+    await orchestrator.sweep(clock.nowMs()); // not yet due
+    expect(deployments.view(id)?.status).toBe("ready");
+
+    advance(1);
+    await orchestrator.sweep(clock.nowMs()); // due
+    expect(deployments.view(id)?.status).toBe("expired");
+    // hidden from the public gallery once expired
+    expect(deployments.list({ publicOnly: true }).some((v) => v.id === id)).toBe(false);
+  });
+
+  it("cleans up old non-working deployments after the retention window", async () => {
+    const { clock, advance } = makeClock();
+    const { orchestrator, deployments } = build(fakeDeps({ fail: true }), clock);
+    const id = await orchestrator.start("qvac", {}, false);
+    await flush();
+    expect(deployments.view(id)?.status).toBe("failed");
+
+    advance(60 * 60 * 1000 - 1);
+    await orchestrator.sweep(clock.nowMs()); // within retention -> kept
+    expect(deployments.view(id)).toBeDefined();
+
+    advance(1);
+    await orchestrator.sweep(clock.nowMs()); // aged out -> removed
+    expect(deployments.view(id)).toBeUndefined();
   });
 
   it("rejects an unknown template", async () => {

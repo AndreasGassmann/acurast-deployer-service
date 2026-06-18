@@ -64,12 +64,18 @@ export interface RunDeployArgs {
   callbackUrl: string;
   /** Called for each recognized deploy phase (phase A only). */
   onPhase: (phase: Phase) => void;
+  /**
+   * Called once with the job's scheduled end time (ms since epoch) — the
+   * deterministic moment the workload stops running, from the SDK-computed
+   * `job.schedule.endTime` (startTime + maxExecutionTime).
+   */
+  onScheduledEnd?: (endTimeMs: number) => void;
   deps: DeployDeps;
 }
 
 /** Run a deployment to completion of phase A (SDK stream). Throws on SDK error. */
 export async function runDeploy(args: RunDeployArgs): Promise<void> {
-  const { config, template, callbackUrl, onPhase, deps } = args;
+  const { config, template, callbackUrl, onPhase, onScheduledEnd, deps } = args;
 
   console.log(
     `[deployer] start template=${template.id} project=${template.projectName} ` +
@@ -101,6 +107,18 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
   }
 
   const job = deps.convertConfigToJob(acurastConfig);
+
+  // The job carries a concrete schedule: it stops running at `endTime`
+  // (startTime + maxExecutionTime). Report it so the deployment can be marked
+  // expired at exactly that moment — no callback anchoring or guesswork.
+  const endTime = (job as { schedule?: { endTime?: unknown } })?.schedule?.endTime;
+  if (typeof endTime === "number" && Number.isFinite(endTime)) {
+    console.log(`[deployer] scheduled end time = ${new Date(endTime).toISOString()}`);
+    onScheduledEnd?.(endTime);
+  } else {
+    console.warn(`[deployer] job has no numeric schedule.endTime; expiry will not be set`);
+  }
+
   const wallet = await deps.walletFromMnemonic(config.acurastMnemonic);
 
   const envRecord = template.injectedEnv({

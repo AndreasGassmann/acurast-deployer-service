@@ -6,6 +6,7 @@ export type DeploymentStatus =
   | "deploying" // SDK phase A in progress
   | "awaiting-tunnel" // env vars set, waiting for workload callback
   | "ready" // tunnel live + app ready
+  | "expired" // ran its allotted execution time; tunnel no longer live
   | "failed"
   | "timed-out";
 
@@ -51,6 +52,8 @@ export interface DeploymentView {
   updatedAt: string;
   tunnelUrl: string | null;
   error: string | null;
+  /** When a ready deployment stops running (ISO); null until ready. */
+  expiresAt: string | null;
   /** Hardcoded per-template estimate (seconds) for the current phase. */
   etaSeconds: number | null;
   /** 0..1 progress derived from phase order. */
@@ -68,6 +71,7 @@ export interface HistoryRecord {
   public: boolean;
   tunnelUrl?: string;
   error?: string;
+  expiresAt?: string;
 }
 
 /** SSE event payload pushed to subscribers. */
