@@ -2,7 +2,12 @@
  * Express app factory. Pure wiring over the injected services so it can be tested
  * with supertest against a mocked orchestrator/store.
  */
-import express, { type Express, type Request, type Response } from "express";
+import express, {
+  type Express,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 import type { Config } from "./config.js";
 import type { Deployments } from "./deployments.js";
 import type { EventHub } from "./events.js";
@@ -25,6 +30,15 @@ export function createApp(deps: AppDeps): Express {
   app.set("trust proxy", true);
   app.use(cors(config));
   app.use(express.json({ limit: "256kb" }));
+  // A malformed JSON body (e.g. a workload callback with unescaped control
+  // chars) should be a clean 400, not a noisy unhandled SyntaxError.
+  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof SyntaxError && "body" in err) {
+      res.status(400).json({ error: "invalid JSON body" });
+      return;
+    }
+    next(err);
+  });
   app.use(identify(config));
 
   const publicLimiter = new RateLimiter(

@@ -80,6 +80,15 @@ describe("HTTP API", () => {
     await request(app).get("/healthz").expect(200, { ok: true });
   });
 
+  it("returns 400 on a malformed JSON body instead of crashing", async () => {
+    await request(app)
+      .post("/deployments")
+      .set("x-api-key", "full-key")
+      .set("Content-Type", "application/json")
+      .send('{"bad": "ctrlchar"}')
+      .expect(400, { error: "invalid JSON body" });
+  });
+
   it("sets CORS headers and answers preflight", async () => {
     const res = await request(app).get("/healthz").set("Origin", "https://qvac.acurast.dev");
     expect(res.headers["access-control-allow-origin"]).toBe("*");
