@@ -14,10 +14,26 @@ NODE_DIR="/usr/local/lib/nodejs/${NODE_DIST}"
 SERVER_PID=""
 TUNNEL_PID=""
 
-apt-get update
+# apt on the proot image fails intermittently (mirror hiccups, stale index) and
+# bails the whole script with exit 100 under `set -e`. Retry apt with a fresh
+# index each attempt so a transient failure doesn't kill the deployment.
+export DEBIAN_FRONTEND=noninteractive
+apt_retry() {
+    i=1
+    while :; do
+        apt-get update && apt-get "$@" && return 0
+        if [ "$i" -ge 5 ]; then
+            echo "ERROR: 'apt-get $*' failed after $i attempts"
+            return 1
+        fi
+        echo "apt-get $* failed (attempt $i); retrying in 10s"
+        sleep 10
+        i=$((i + 1))
+    done
+}
 
 if ! command -v curl >/dev/null 2>&1; then
-    apt-get install -y curl
+    apt_retry install -y curl
 fi
 
 . "$SCRIPT_DIR/callback.sh"
@@ -40,7 +56,7 @@ send_log "Setting up QVAC LLM environment"
 # Toolchain for building the getifaddrs shim and any native npm addons.
 # libvulkan1: the QVAC linux-arm64 worker hard-links libvulkan.so.1. No GPU is
 # needed (llama.cpp falls back to CPU) — this just satisfies the dynamic link.
-apt-get install -y gcc g++ make python3 python3-cryptography libc6-dev xz-utils ca-certificates libvulkan1
+apt_retry install -y gcc g++ make python3 python3-cryptography libc6-dev xz-utils ca-certificates libvulkan1
 
 # --- getifaddrs shim (PRoot has no real interfaces; fake a loopback) ---
 if [ ! -f "$GETIFADDRS_OVERRIDE_SO" ]; then
