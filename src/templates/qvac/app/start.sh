@@ -16,17 +16,22 @@ TUNNEL_PID=""
 
 # apt on the proot image fails intermittently (mirror hiccups, stale index) and
 # bails the whole script with exit 100 under `set -e`. Retry apt with a fresh
-# index each attempt so a transient failure doesn't kill the deployment.
+# index each attempt so a transient failure doesn't kill the deployment. apt's
+# real error only goes to the processor's stdout (invisible to us), so on the
+# final failure we forward the tail of it via the webhook (send_log) to debug.
 export DEBIAN_FRONTEND=noninteractive
 apt_retry() {
     i=1
     while :; do
-        apt-get update && apt-get "$@" && return 0
+        out=$( { apt-get update && apt-get "$@"; } 2>&1 ) && return 0
         if [ "$i" -ge 5 ]; then
             echo "ERROR: 'apt-get $*' failed after $i attempts"
+            echo "$out"
+            tail=$(printf '%s' "$out" | tail -n 4 | tr '\n' '|')
+            command -v send_log >/dev/null 2>&1 && send_log "apt 'apt-get $*' failed: ${tail}"
             return 1
         fi
-        echo "apt-get $* failed (attempt $i); retrying in 10s"
+        echo "apt-get $* failed (attempt $i), retrying in 10s"
         sleep 10
         i=$((i + 1))
     done
@@ -38,14 +43,36 @@ fi
 
 . "$SCRIPT_DIR/callback.sh"
 
+# Current step, so a `set -e` abort reports WHERE it died, not just the code.
+STEP="startup"
+step() {
+    STEP="$1"
+    echo "=== $STEP ==="
+}
+
+# Retry a flaky (usually network) command a few times before giving up.
+retry() {
+    i=1
+    while :; do
+        "$@" && return 0
+        if [ "$i" -ge 3 ]; then
+            echo "ERROR: '$*' failed after $i attempts"
+            return 1
+        fi
+        echo "'$*' failed (attempt $i); retrying in 10s"
+        sleep 10
+        i=$((i + 1))
+    done
+}
+
 # Report a non-zero exit (set -e bails here) to the webhook, then clean up.
 finish() {
     code=$?
     [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
     [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
     if [ "$code" -ne 0 ]; then
-        echo "ERROR: start.sh exiting with code $code"
-        report_error "start.sh exited with code $code"
+        echo "ERROR: start.sh failed during '$STEP' (exit $code)"
+        report_error "start.sh failed during '$STEP' (exit $code)"
     fi
     exit "$code"
 }
@@ -56,11 +83,12 @@ send_log "Setting up QVAC LLM environment"
 # Toolchain for building the getifaddrs shim and any native npm addons.
 # libvulkan1: the QVAC linux-arm64 worker hard-links libvulkan.so.1. No GPU is
 # needed (llama.cpp falls back to CPU) — this just satisfies the dynamic link.
+step "apt install toolchain"
 apt_retry install -y gcc g++ make python3 python3-cryptography libc6-dev xz-utils ca-certificates libvulkan1
 
 # --- getifaddrs shim (PRoot has no real interfaces; fake a loopback) ---
 if [ ! -f "$GETIFADDRS_OVERRIDE_SO" ]; then
-    echo "=== Building getifaddrs override shim ==="
+    step "build getifaddrs shim"
     mkdir -p "$(dirname "$GETIFADDRS_OVERRIDE_SO")"
     gcc -shared -fPIC -o "$GETIFADDRS_OVERRIDE_SO" "$SCRIPT_DIR/getifaddrs_override.c"
     echo "=== Shim built ==="
@@ -69,10 +97,10 @@ export LD_PRELOAD="$GETIFADDRS_OVERRIDE_SO"
 
 # --- Node.js ---
 if [ ! -x "${NODE_DIR}/bin/node" ]; then
-    echo "=== Installing Node.js ${NODE_VERSION} ==="
+    step "install Node.js ${NODE_VERSION}"
     send_log "Installing Node.js ${NODE_VERSION}"
     mkdir -p /usr/local/lib/nodejs
-    curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${NODE_DIST}.tar.xz" -o /tmp/node.tar.xz
+    retry curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${NODE_DIST}.tar.xz" -o /tmp/node.tar.xz
     tar -xf /tmp/node.tar.xz -C /usr/local/lib/nodejs
     rm -f /tmp/node.tar.xz
 fi
@@ -86,9 +114,9 @@ echo "node: $(node --version), npm: $(npm --version)"
 # --- Install the QVAC SDK ---
 cd "$SCRIPT_DIR"
 if [ ! -d "$SCRIPT_DIR/node_modules/@qvac/sdk" ]; then
-    echo "=== Installing @qvac/sdk (downloads native LLM runtime binaries, ~GBs) ==="
+    step "install @qvac/sdk"
     send_log "Installing QVAC SDK (this downloads native LLM runtime binaries)"
-    npm install --no-audit --no-fund
+    retry npm install --no-audit --no-fund
 fi
 if [ ! -d "$SCRIPT_DIR/node_modules/@qvac/sdk" ]; then
     report_error "QVAC SDK install failed: node_modules/@qvac/sdk missing"
@@ -133,12 +161,13 @@ if (hasRPCConfig) {
 EOF
 export QVAC_WORKER_PATH="$WORKER_ENTRY"
 
-echo "=== Starting QVAC LLM server on port ${WEB_PORT:-8080} ==="
+step "start QVAC LLM server"
 send_log "Starting QVAC LLM server (loads the model in the background)"
 
 node "$SCRIPT_DIR/server.mjs" &
 SERVER_PID=$!
 
+step "open Acurast tunnel"
 send_log "Local server ready, opening Acurast reverse tunnel"
 
 python3 "$SCRIPT_DIR/tunnel.py" &
