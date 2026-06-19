@@ -31,6 +31,8 @@ interface Internal {
   updatedAt: string;
   tunnelUrl: string | null;
   error: string | null;
+  /** On-chain numeric job id (for the hub explorer link); null until known. */
+  chainDeploymentId: string | null;
   /** When a ready deployment stops running (ISO); null until ready. */
   expiresAt: string | null;
   /** Per-deployment unguessable token authorizing the tunnel callback. */
@@ -66,6 +68,7 @@ export class Deployments {
       updatedAt: now,
       tunnelUrl: null,
       error: null,
+      chainDeploymentId: null,
       expiresAt: null,
       token,
     });
@@ -119,6 +122,12 @@ export class Deployments {
   setExpiry(id: string, expiresAtIso: string): void {
     const item = this.items.get(id);
     if (item) item.expiresAt = expiresAtIso;
+  }
+
+  /** Record the on-chain numeric job id (for the explorer link). */
+  setChainDeploymentId(id: string, chainId: string): void {
+    const item = this.items.get(id);
+    if (item) item.chainDeploymentId = chainId;
   }
 
   /** Ids of ready deployments whose run window has elapsed. */
@@ -189,6 +198,7 @@ export class Deployments {
           updatedAt: r.ts,
           tunnelUrl: r.tunnelUrl ?? null,
           error: r.error ?? null,
+          chainDeploymentId: r.chainDeploymentId ?? null,
           expiresAt: r.expiresAt ?? null,
           // Restored from the persisted "created" record so callbacks still
           // authenticate after a restart (empty if an older record lacks it).
@@ -201,6 +211,7 @@ export class Deployments {
         item.updatedAt = r.ts;
         if (r.tunnelUrl !== undefined) item.tunnelUrl = r.tunnelUrl;
         if (r.error !== undefined) item.error = r.error;
+        if (r.chainDeploymentId !== undefined) item.chainDeploymentId = r.chainDeploymentId;
         if (r.expiresAt !== undefined) item.expiresAt = r.expiresAt;
         if (r.token !== undefined) item.token = r.token;
       }
@@ -224,6 +235,7 @@ export class Deployments {
       updatedAt: item.updatedAt,
       tunnelUrl: item.tunnelUrl,
       error: item.error,
+      chainDeploymentId: item.chainDeploymentId,
       expiresAt: item.expiresAt,
       etaSeconds,
       progress,

@@ -148,6 +148,10 @@ export class Orchestrator {
         onScheduledEnd: (endTimeMs) => {
           this.deployments.setExpiry(id, new Date(endTimeMs).toISOString());
         },
+        onChainId: (chainId) => {
+          this.deployments.setChainDeploymentId(id, chainId);
+          console.log(`[orchestrator] id=${id} chain deployment id=${chainId}`);
+        },
       });
       // SDK stream ended (at env-set). Arm the tunnel-wait timeout.
       console.log(`[orchestrator] id=${id} phase A done; awaiting tunnel callback`);
@@ -282,6 +286,7 @@ export class Orchestrator {
       public: view.public,
       ...(view.tunnelUrl ? { tunnelUrl: view.tunnelUrl } : {}),
       ...(view.error ? { error: view.error } : {}),
+      ...(view.chainDeploymentId ? { chainDeploymentId: view.chainDeploymentId } : {}),
       ...(view.expiresAt ? { expiresAt: view.expiresAt } : {}),
       ...(extra.token ? { token: extra.token } : {}),
     });

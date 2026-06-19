@@ -52,6 +52,8 @@ export interface DeploymentView {
   updatedAt: string;
   tunnelUrl: string | null;
   error: string | null;
+  /** On-chain numeric job id (for the hub explorer link); null until known. */
+  chainDeploymentId: string | null;
   /** When a ready deployment stops running (ISO); null until ready. */
   expiresAt: string | null;
   /** Hardcoded per-template estimate (seconds) for the current phase. */
@@ -72,6 +74,7 @@ export interface HistoryRecord {
   tunnelUrl?: string;
   error?: string;
   expiresAt?: string;
+  chainDeploymentId?: string;
   /**
    * Per-deployment callback token, persisted once on the "created" record so an
    * in-flight deployment can still authenticate its workload callbacks after a

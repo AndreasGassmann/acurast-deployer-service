@@ -64,6 +64,8 @@ export interface RunDeployArgs {
   callbackUrl: string;
   /** Called for each recognized deploy phase (phase A only). */
   onPhase: (phase: Phase) => void;
+  /** Called once with the on-chain numeric job id, when the SDK reports it. */
+  onChainId?: (chainId: string) => void;
   /**
    * Called once with the job's scheduled end time (ms since epoch) — the
    * deterministic moment the workload stops running, from the SDK-computed
@@ -75,7 +77,7 @@ export interface RunDeployArgs {
 
 /** Run a deployment to completion of phase A (SDK stream). Throws on SDK error. */
 export async function runDeploy(args: RunDeployArgs): Promise<void> {
-  const { config, template, callbackUrl, onPhase, onScheduledEnd, deps } = args;
+  const { config, template, callbackUrl, onPhase, onScheduledEnd, onChainId, deps } = args;
 
   console.log(
     `[deployer] start template=${template.id} project=${template.projectName} ` +
@@ -137,9 +139,21 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
     rpcEndpoint: config.rpcWss,
     ipfs: { endpoint: config.ipfsEndpoint, apiKey: config.ipfsApiKey },
     envVars,
-    statusCallback: (status: string) => {
+    statusCallback: (status: string, data?: unknown) => {
       const phase = sdkStatusToPhase(status);
       console.log(`[deployer] sdk status='${status}' -> phase=${phase ?? "(unmapped)"}`);
+      // The SDK reports the on-chain job id in the WaitingForMatch payload:
+      // data.jobIds[0] = [{ acurast: <origin> }, <numericId>]. We surface the
+      // numeric id for the hub explorer link.
+      if (status === "WaitingForMatch") {
+        const jobId0 = (data as { jobIds?: Array<[unknown, unknown]> })?.jobIds?.[0];
+        const numericId = jobId0?.[1];
+        if (numericId !== undefined && numericId !== null) {
+          const chainId = String(numericId);
+          console.log(`[deployer] on-chain deployment id = ${chainId}`);
+          onChainId?.(chainId);
+        }
+      }
       if (phase) onPhase(phase);
     },
   });

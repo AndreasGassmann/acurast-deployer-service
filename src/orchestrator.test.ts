@@ -79,7 +79,7 @@ function fakeDeps(opts: { fail?: boolean } = {}): DeployDeps {
         "Acknowledged",
         "EnvironmentVariablesSet",
       ]) {
-        options.statusCallback(s);
+        options.statusCallback(s, s === "WaitingForMatch" ? { jobIds: [[{ acurast: "x" }, 999]] } : undefined);
       }
     },
   };
@@ -122,6 +122,8 @@ describe("Orchestrator", () => {
     // phase A complete -> awaiting-tunnel
     expect(deployments.view(id)?.status).toBe("awaiting-tunnel");
     expect(deployments.view(id)?.phase).toBe("env-set");
+    // on-chain deployment id captured from the WaitingForMatch payload
+    expect(deployments.view(id)?.chainDeploymentId).toBe("999");
 
     // workload reports tunnel up
     await orchestrator.handleCallback(id, deployments.get(id)!.token, {

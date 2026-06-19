@@ -37,7 +37,12 @@ export function mockDeps(): DeployDeps {
         "EnvironmentVariablesSet",
       ];
       for (const status of seq) {
-        options.statusCallback(status);
+        // Mirror the real SDK: WaitingForMatch carries the on-chain job id.
+        const data =
+          status === "WaitingForMatch"
+            ? { jobIds: [[{ acurast: "mock" }, 12345]] }
+            : undefined;
+        options.statusCallback(status, data);
         await delay(400);
       }
 

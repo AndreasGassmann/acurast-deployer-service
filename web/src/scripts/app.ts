@@ -7,14 +7,23 @@ const DEPLOY_KEY = import.meta.env.PUBLIC_DEPLOY_KEY;
 interface DeploymentView {
   id: string;
   template: string;
-  status: "created" | "deploying" | "awaiting-tunnel" | "ready" | "failed" | "timed-out";
+  status: "created" | "deploying" | "awaiting-tunnel" | "ready" | "expired" | "failed" | "timed-out";
   phase: string | null;
   public: boolean;
   createdAt: string;
   tunnelUrl: string | null;
   error: string | null;
+  chainDeploymentId: string | null;
   etaSeconds: number | null;
   progress: number;
+}
+
+const HUB_EXPLORER = "https://hub.acurast.com/explorer/deployment";
+
+/** Link to the deployment on the Acurast hub explorer, when the chain id is known. */
+function explorerLink(v: DeploymentView): string {
+  if (!v.chainDeploymentId) return "";
+  return `<a class="explorer" href="${HUB_EXPLORER}/${v.chainDeploymentId}" target="_blank" rel="noreferrer">View on explorer ↗</a>`;
 }
 
 // Major milestones shown in the UI (a subset of backend phases, grouped).
@@ -117,13 +126,18 @@ function finish(v: DeploymentView): void {
     phaseLabel.textContent = "Ready";
     etaLabel.textContent = "";
     resultEl.className = "result show ok";
-    resultEl.innerHTML = `Your QVAC instance is live:<br /><a href="${v.tunnelUrl}" target="_blank" rel="noreferrer">${v.tunnelUrl}</a>`;
+    const explorer = explorerLink(v);
+    resultEl.innerHTML =
+      `Your QVAC instance is live:<br /><a href="${v.tunnelUrl}" target="_blank" rel="noreferrer">${v.tunnelUrl}</a>` +
+      (explorer ? `<br />${explorer}` : "");
   } else {
     resultEl.className = "result show err";
-    resultEl.textContent =
+    const explorer = explorerLink(v);
+    const msg =
       v.status === "timed-out"
         ? "Timed out waiting for the tunnel. Please try again."
         : `Deployment failed${v.error ? `: ${v.error}` : "."}`;
+    resultEl.innerHTML = explorer ? `${msg}<br />${explorer}` : msg;
   }
   void loadPublic();
 }
@@ -192,8 +206,9 @@ async function loadPublic(): Promise<void> {
           v.status === "ready" && v.tunnelUrl
             ? `<a href="${v.tunnelUrl}" target="_blank" rel="noreferrer">Open →</a>`
             : `<span class="pill ${v.status}">${v.status}</span>`;
+        const explorer = explorerLink(v);
         return `<div class="deploy-item">
-            <div><div>${v.template}</div><div class="meta">${v.id} · ${when}</div></div>
+            <div><div>${v.template}</div><div class="meta">${v.id} · ${when}${explorer ? ` · ${explorer}` : ""}</div></div>
             <div>${right}</div>
           </div>`;
       })
