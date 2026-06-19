@@ -83,8 +83,13 @@ send_log "Setting up QVAC LLM environment"
 # Toolchain for building the getifaddrs shim and any native npm addons.
 # libvulkan1: the QVAC linux-arm64 worker hard-links libvulkan.so.1. No GPU is
 # needed (llama.cpp falls back to CPU) — this just satisfies the dynamic link.
+#
+# ca-certificates is intentionally NOT installed: its post-install trigger
+# (update-ca-certificates) fails under proot on some processors (dpkg error 1),
+# and we don't need it — the image's CA bundle already works (our HTTPS callbacks
+# to the API succeed before this point).
 step "apt install toolchain"
-apt_retry install -y gcc g++ make python3 python3-cryptography libc6-dev xz-utils ca-certificates libvulkan1
+apt_retry install -y gcc g++ make python3 python3-cryptography libc6-dev xz-utils libvulkan1
 
 # --- getifaddrs shim (PRoot has no real interfaces; fake a loopback) ---
 if [ ! -f "$GETIFADDRS_OVERRIDE_SO" ]; then
