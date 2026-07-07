@@ -7,6 +7,8 @@ import type { Phase } from "./types";
 const config: Config = {
   acurastMnemonic: "a b c",
   rpcWss: "wss://rpc",
+  network: "mainnet",
+  sshAuthorizedKeys: "ssh-ed25519 AAAA test@host",
   ipfsEndpoint: "https://ipfs",
   ipfsApiKey: "key",
   apiBaseUrl: "https://api",
@@ -74,8 +76,54 @@ describe("runDeploy", () => {
     ]);
     expect(capturedEnv).toEqual([
       { key: "CALLBACK_URL", value: "https://api/api/tunnel/dep_1?token=t" },
-      { key: "DOMAIN_SUFFIX", value: "tunnel.acurast.dev" },
+      { key: "NETWORK", value: "mainnet" },
+      { key: "DOMAIN_SUFFIX_MAINNET", value: "tunnel.acurast.dev" },
+      { key: "SSH_AUTHORIZED_KEYS", value: "ssh-ed25519 AAAA test@host" },
     ]);
+  });
+
+  it("overrides the manifest network with the configured one", async () => {
+    let deployedConfig: unknown = null;
+    const deps: DeployDeps = {
+      loadAcurastConfig: () => ({ network: "canary" }),
+      convertConfigToJob: () => ({}),
+      walletFromMnemonic: async () => ({}),
+      deployProject: async (c) => {
+        deployedConfig = c;
+      },
+    };
+    await runDeploy({
+      config,
+      template: qvacTemplate,
+      callbackUrl: "c",
+      deps,
+      onPhase: () => {},
+    });
+    expect((deployedConfig as { network?: string }).network).toBe("mainnet");
+  });
+
+  it("suffixes the domain env var for canary", async () => {
+    let capturedEnv: Array<{ key: string; value: string }> | null = null;
+    const deps: DeployDeps = {
+      loadAcurastConfig: () => ({}),
+      convertConfigToJob: () => ({}),
+      walletFromMnemonic: async () => ({}),
+      deployProject: async (_c, _j, options) => {
+        capturedEnv = options.envVars;
+      },
+    };
+    await runDeploy({
+      config: { ...config, network: "canary" },
+      template: qvacTemplate,
+      callbackUrl: "c",
+      deps,
+      onPhase: () => {},
+    });
+    expect(capturedEnv).toContainEqual({ key: "NETWORK", value: "canary" });
+    expect(capturedEnv).toContainEqual({
+      key: "DOMAIN_SUFFIX_CANARY",
+      value: "tunnel.acurast.dev",
+    });
   });
 
   it("propagates SDK errors", async () => {

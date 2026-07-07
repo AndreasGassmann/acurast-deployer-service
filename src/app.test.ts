@@ -21,6 +21,8 @@ import type { Config } from "./config";
 const config: Config = {
   acurastMnemonic: "a b c",
   rpcWss: "wss://rpc",
+  network: "mainnet",
+  sshAuthorizedKeys: "ssh-ed25519 AAAA test@host",
   ipfsEndpoint: "https://ipfs",
   ipfsApiKey: "key",
   apiBaseUrl: "https://api.qvac.acurast.dev",

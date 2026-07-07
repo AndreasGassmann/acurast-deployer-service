@@ -33,8 +33,9 @@ export const systemClock: Clock = {
 
 /**
  * Lifecycle event shape POSTed by the workload to CALLBACK_URL.
- * Matches the acurast-qvac payload: `started` carries `webUrl` (tunnel.py /
- * callback.sh), model events carry `model`, errors carry `message`.
+ * Matches the acurast-qvac payload: `started` carries `webUrl` plus the SSH
+ * debug-tunnel fields (tunnel.py / callback.sh), model events carry `model`,
+ * errors carry `message`.
  */
 export interface CallbackEvent {
   event: "started" | "model_loading" | "model_ready" | "model_error" | "log" | "error";
@@ -44,7 +45,19 @@ export interface CallbackEvent {
   url?: string;
   message?: string;
   model?: string;
+  /** SSH debug tunnel (secondary connection) URL on `started`; may be null. */
+  sshUrl?: string | null;
+  /** Local SSH port inside the workload (informational). */
+  sshPort?: number;
+  /** Ready-made ssh-over-TLS connect command on `started`; null when the processor has no secondary-tunnel support. */
+  connect?: string | null;
 }
+
+/**
+ * `error` events that tunnel.py reports but then continues past (it still opens
+ * the web tunnel and calls `started`). These must not fail the deployment.
+ */
+const NON_FATAL_ERROR_PREFIXES = ["No secondary tunnel returned"];
 
 const CALLBACK_TO_PHASE: Record<string, Phase> = {
   started: "started",
@@ -185,7 +198,12 @@ export class Orchestrator {
     console.log(`[orchestrator] callback id=${id} event=${event.event}${detail ? ` ${detail}` : ""}`);
 
     if (event.event === "error" || event.event === "model_error") {
-      await this.fail(id, event.message ?? "workload reported error");
+      const msg = event.message ?? "workload reported error";
+      if (NON_FATAL_ERROR_PREFIXES.some((p) => msg.startsWith(p))) {
+        console.warn(`[orchestrator] non-fatal workload error id=${id}: ${msg}`);
+        return true;
+      }
+      await this.fail(id, msg);
       return true;
     }
     if (event.event === "log") {
@@ -200,6 +218,11 @@ export class Orchestrator {
     const tunnelUrl = event.webUrl ?? event.url;
     if (event.event === "started" && tunnelUrl) {
       this.deployments.setStatus(id, "awaiting-tunnel", now, { tunnelUrl });
+      // The SSH debug tunnel is operator-only: log + persist to history.jsonl,
+      // but keep it out of the API views (public deployments are world-readable).
+      if (event.connect) {
+        console.log(`[orchestrator] id=${id} ssh debug tunnel: ${event.connect}`);
+      }
     }
     this.deployments.setPhase(id, phase, now);
 
@@ -214,7 +237,12 @@ export class Orchestrator {
       console.log(`[orchestrator] id=${id} ready (tunnel + model both up)`);
     }
 
-    await this.record(id, `callback:${event.event}`, phase);
+    await this.record(
+      id,
+      `callback:${event.event}`,
+      phase,
+      event.event === "started" && event.connect ? { sshCommand: event.connect } : {},
+    );
     return true;
   }
 
@@ -272,7 +300,7 @@ export class Orchestrator {
     id: string,
     event: string,
     phase: Phase | null,
-    extra: { token?: string } = {},
+    extra: { token?: string; sshCommand?: string } = {},
   ): Promise<void> {
     const view = this.deployments.view(id);
     if (!view) return;
@@ -289,6 +317,7 @@ export class Orchestrator {
       ...(view.chainDeploymentId ? { chainDeploymentId: view.chainDeploymentId } : {}),
       ...(view.expiresAt ? { expiresAt: view.expiresAt } : {}),
       ...(extra.token ? { token: extra.token } : {}),
+      ...(extra.sshCommand ? { sshCommand: extra.sshCommand } : {}),
     });
     const progress: ProgressEvent = {
       id,

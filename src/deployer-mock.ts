@@ -55,6 +55,12 @@ export function mockDeps(): DeployDeps {
           await post(callbackUrl, {
             event: "started",
             webUrl: "https://mock-clientid.tunnel.acurast.dev:8443",
+            sshUrl: "https://mock-sshclientid.tunnel.acurast.dev",
+            sshPort: 2222,
+            connect:
+              "ssh -o ProxyCommand='openssl s_client -quiet " +
+              "-servername mock-sshclientid.tunnel.acurast.dev " +
+              "-connect mock-sshclientid.tunnel.acurast.dev:443' root@mock-sshclientid",
           });
           await delay(1200);
           await post(callbackUrl, { event: "model_loading" });

@@ -4,8 +4,9 @@
  *
  * The deployable payload (`app/` + `acurast.json`) is vendored under
  * `src/templates/qvac/` from github.com/Acurast/acurast-qvac. See the README for
- * how to refresh it. The workload reads CALLBACK_URL + DOMAIN_SUFFIX (declared in
- * the acurast.json `includeEnvironmentVariables`) and POSTs lifecycle events back.
+ * how to refresh it. The workload reads CALLBACK_URL, NETWORK (canary|mainnet),
+ * DOMAIN_SUFFIX_<NETWORK> and SSH_AUTHORIZED_KEYS — it exits if NETWORK or
+ * SSH_AUTHORIZED_KEYS is unset — and POSTs lifecycle events back.
  */
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -31,9 +32,13 @@ export const qvacTemplate: Template = {
   // The vendored acurast.json names its project "qvac-llm" (template id stays "qvac").
   projectName: "qvac-llm",
   paramSchema,
-  injectedEnv: ({ callbackUrl, domainSuffix }) => ({
+  injectedEnv: ({ callbackUrl, domainSuffix, network, sshAuthorizedKeys }) => ({
     CALLBACK_URL: callbackUrl,
-    DOMAIN_SUFFIX: domainSuffix,
+    NETWORK: network,
+    // tunnel.py picks the suffix from DOMAIN_SUFFIX_<NETWORK>; the unsuffixed
+    // DOMAIN_SUFFIX is no longer read.
+    [`DOMAIN_SUFFIX_${network.toUpperCase()}`]: domainSuffix,
+    SSH_AUTHORIZED_KEYS: sshAuthorizedKeys,
   }),
   // No protocol time estimates exist; these are hand-tuned per-phase guesses (seconds).
   estimates: {

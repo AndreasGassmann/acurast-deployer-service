@@ -9,6 +9,13 @@
 export interface Config {
   acurastMnemonic: string;
   rpcWss: string;
+  /** Target Acurast network; drives the manifest `network` field and the NETWORK env injected into workloads. */
+  network: "canary" | "mainnet";
+  /**
+   * Public key(s) allowed to SSH into deployed workloads (authorized_keys format,
+   * `\n`-separated). The qvac workload exits if this is unset, so it is required.
+   */
+  sshAuthorizedKeys: string;
   ipfsEndpoint: string;
   ipfsApiKey: string;
   apiBaseUrl: string;
@@ -56,6 +63,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`Invalid PORT: ${portRaw}`);
   }
 
+  const networkRaw = env.NETWORK?.trim() || "mainnet";
+  if (networkRaw !== "canary" && networkRaw !== "mainnet") {
+    throw new Error(`Invalid NETWORK: ${networkRaw} (expected "canary" or "mainnet")`);
+  }
+
   const rateRaw = env.PUBLIC_DEPLOY_RATE_PER_HOUR?.trim() || "5";
   const publicDeployRatePerHour = Number(rateRaw);
   if (!Number.isInteger(publicDeployRatePerHour) || publicDeployRatePerHour < 0) {
@@ -65,6 +77,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     acurastMnemonic: required(env, "ACURAST_MNEMONIC"),
     rpcWss: required(env, "RPC_WSS"),
+    network: networkRaw,
+    sshAuthorizedKeys: required(env, "SSH_AUTHORIZED_KEYS"),
     // Default to the Acurast IPFS proxy (no key required). Override both to use
     // your own Pinata-compatible pinning service.
     ipfsEndpoint: (env.IPFS_ENDPOINT?.trim() || DEFAULT_IPFS_ENDPOINT).replace(/\/+$/, ""),

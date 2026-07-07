@@ -7,6 +7,7 @@ const base = {
   API_BASE_URL: "https://api.qvac.acurast.dev/",
   API_KEYS: "k1, k2 ,k3",
   PUBLIC_DEPLOY_KEY: "pub",
+  SSH_AUTHORIZED_KEYS: "ssh-ed25519 AAAA test@host",
 };
 
 describe("loadConfig", () => {
@@ -58,5 +59,27 @@ describe("loadConfig", () => {
 
   it("rejects an invalid port", () => {
     expect(() => loadConfig({ ...base, PORT: "abc" } as NodeJS.ProcessEnv)).toThrow(/PORT/);
+  });
+
+  it("defaults NETWORK to mainnet", () => {
+    const c = loadConfig(base as NodeJS.ProcessEnv);
+    expect(c.network).toBe("mainnet");
+  });
+
+  it("honours NETWORK=canary", () => {
+    const c = loadConfig({ ...base, NETWORK: "canary" } as NodeJS.ProcessEnv);
+    expect(c.network).toBe("canary");
+  });
+
+  it("rejects an unknown NETWORK", () => {
+    expect(() => loadConfig({ ...base, NETWORK: "testnet" } as NodeJS.ProcessEnv)).toThrow(
+      /NETWORK/,
+    );
+  });
+
+  it("requires SSH_AUTHORIZED_KEYS (workload exits without it)", () => {
+    const { SSH_AUTHORIZED_KEYS, ...rest } = base;
+    void SSH_AUTHORIZED_KEYS;
+    expect(() => loadConfig(rest as NodeJS.ProcessEnv)).toThrow(/SSH_AUTHORIZED_KEYS/);
   });
 });

@@ -5,6 +5,9 @@ import type { Phase } from "../types.js";
 export interface InjectedEnvContext {
   callbackUrl: string;
   domainSuffix: string;
+  network: "canary" | "mainnet";
+  /** authorized_keys content granting SSH access to the workload's debug shell. */
+  sshAuthorizedKeys: string;
 }
 
 export interface Template {

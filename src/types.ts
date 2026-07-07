@@ -81,6 +81,12 @@ export interface HistoryRecord {
    * service restart. Not a chain secret — only authorizes the tunnel callback.
    */
   token?: string;
+  /**
+   * SSH-over-TLS connect command for the workload's debug shell, persisted on the
+   * `callback:started` record. Operator-only (needs the matching private key
+   * anyway) — deliberately NOT exposed in any API view.
+   */
+  sshCommand?: string;
 }
 
 /** SSE event payload pushed to subscribers. */

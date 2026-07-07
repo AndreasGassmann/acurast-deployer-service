@@ -13,6 +13,8 @@ import type { ProgressEvent } from "./types";
 const config: Config = {
   acurastMnemonic: "a b c",
   rpcWss: "wss://rpc",
+  network: "mainnet",
+  sshAuthorizedKeys: "ssh-ed25519 AAAA test@host",
   ipfsEndpoint: "https://ipfs",
   ipfsApiKey: "key",
   apiBaseUrl: "https://api.qvac.acurast.dev",
@@ -250,6 +252,44 @@ describe("Orchestrator", () => {
     const v = deployments.view(id)!;
     expect(v.status).toBe("failed");
     expect(v.error).toMatch(/oom/);
+  });
+
+  it("does not fail the deployment on tunnel.py's non-fatal secondary-tunnel error", async () => {
+    const { clock } = makeClock();
+    const { orchestrator, deployments } = build(fakeDeps(), clock);
+    const id = await orchestrator.start("qvac", {}, false);
+    await flush();
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, {
+      event: "error",
+      message: "No secondary tunnel returned — the processor build may predate support",
+    });
+    expect(deployments.view(id)?.status).toBe("awaiting-tunnel");
+    // the deployment still completes normally afterwards
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, {
+      event: "started",
+      webUrl: "https://abc.tunnel.acurast.dev:8443",
+    });
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, { event: "model_ready" });
+    expect(deployments.view(id)?.status).toBe("ready");
+  });
+
+  it("persists the SSH connect command to history without exposing it in views", async () => {
+    const { clock } = makeClock();
+    const { orchestrator, deployments, history } = build(fakeDeps(), clock);
+    const id = await orchestrator.start("qvac", {}, true);
+    await flush();
+    const connect = "ssh -o ProxyCommand='openssl s_client ...' root@abc";
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, {
+      event: "started",
+      webUrl: "https://abc.tunnel.acurast.dev:8443",
+      sshUrl: "https://def.tunnel.acurast.dev",
+      sshPort: 2222,
+      connect,
+    });
+    await history.drain();
+    const records = await history.readAll();
+    expect(records.find((r) => r.event === "callback:started")?.sshCommand).toBe(connect);
+    expect(JSON.stringify(deployments.view(id))).not.toContain("ssh");
   });
 
   it("rejects a callback with a bad token", async () => {

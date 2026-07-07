@@ -45,7 +45,7 @@ template (`src/templates/qvac.ts`).
 
 ## Prerequisites
 
-- **Funded mnemonic** — the deployer account must hold cACU (canary) to pay for
+- **Funded mnemonic** — the deployer account must hold ACU (mainnet) to pay for
   deployments.
 - **IPFS endpoint + API key** — deployment code is bundled and uploaded to IPFS.
 - **No DNS work** for tunnels — `DOMAIN_SUFFIX` defaults to the shared,
@@ -64,12 +64,14 @@ Copy `.env.example` to `.env` and fill it in. All variables:
 | Var | Required | Notes |
 |---|---|---|
 | `ACURAST_MNEMONIC` | yes | Deployer seed. Never logged, never in history. |
-| `RPC_WSS` | yes | Substrate RPC websocket (canary by default). |
+| `RPC_WSS` | yes | Substrate RPC websocket (mainnet by default). |
+| `NETWORK` | no | `mainnet` (default) or `canary`. Overrides the manifest `network` and is injected into the workload. Keep in sync with `RPC_WSS`. |
+| `SSH_AUTHORIZED_KEYS` | yes | Public key(s) for the workload's SSH debug shell (`authorized_keys` format, `\n`-separated). The workload exits if unset. |
 | `IPFS_ENDPOINT` / `IPFS_API_KEY` | no | IPFS upload target. Defaults to Acurast's hosted proxy (no key needed); set both to use your own Pinata-compatible service. |
 | `API_BASE_URL` | yes | Public URL of this API; used to mint `CALLBACK_URL`. |
 | `API_KEYS` | yes | Comma-separated full-access keys. |
 | `PUBLIC_DEPLOY_KEY` | yes | qvac-only, rate-limited key baked into the landing page. |
-| `DOMAIN_SUFFIX` | no | Defaults to `tunnel.acurast.dev`. |
+| `DOMAIN_SUFFIX` | no | Defaults to `tunnel.acurast.dev`. Injected as `DOMAIN_SUFFIX_<NETWORK>`; its DNS records must point at the selected network's relays. |
 | `PORT` | no | Default `8080`. |
 | `DATA_DIR` | no | Default `./data`. |
 | `PUBLIC_DEPLOY_RATE_PER_HOUR` | no | Default `5`. |
@@ -133,8 +135,10 @@ The real [`Acurast/acurast-qvac`](https://github.com/Acurast/acurast-qvac) proje
 is **vendored** under `src/templates/qvac/`:
 
 - `acurast.json` — the upstream manifest verbatim (project `qvac-llm`, Shell
-  runtime, canary, the termux proot Ubuntu image + its real `sha256`,
-  `includeEnvironmentVariables: ["CALLBACK_URL","DOMAIN_SUFFIX"]`).
+  runtime, mainnet, attested devices only, the termux proot Ubuntu image + its
+  real `sha256`, `includeEnvironmentVariables: ["CALLBACK_URL","NETWORK",
+  "DOMAIN_SUFFIX_MAINNET","SSH_AUTHORIZED_KEYS"]`).
+  The deployer overrides the `network` field with `NETWORK` at deploy time.
 - `app/` — the deployable payload (`start.sh`, `server.mjs`, `tunnel.py`,
   `callback.sh`, `www/`, …). `fileUrl: "app"` resolves next to the manifest.
 - `UPSTREAM_COMMIT` — the source commit it was vendored from.
@@ -145,10 +149,15 @@ The build copies these into `dist/templates/qvac/`. To refresh from upstream:
 sh scripts/vendor-qvac.sh
 ```
 
-This service injects `CALLBACK_URL` + `DOMAIN_SUFFIX` as encrypted env vars; the
-workload's `tunnel.py` / `callback.sh` POST lifecycle events back — `started`
-(carries `webUrl`), `model_loading`, `model_ready`, and `model_error` — which the
-orchestrator maps to phases and the final tunnel URL.
+This service injects `CALLBACK_URL`, `NETWORK`, `DOMAIN_SUFFIX_<NETWORK>` and
+`SSH_AUTHORIZED_KEYS` as encrypted env vars (the workload exits if `NETWORK` or
+`SSH_AUTHORIZED_KEYS` is unset); the workload's `tunnel.py` / `callback.sh` POST
+lifecycle events back — `started` (carries `webUrl` plus the SSH debug-tunnel
+fields `sshUrl`/`sshPort`/`connect`), `model_loading`, `model_ready`, and
+`model_error` — which the orchestrator maps to phases and the final tunnel URL.
+The SSH `connect` command is logged and persisted to `history.jsonl`
+(`sshCommand`) but never exposed through the API. The workload's non-fatal
+"No secondary tunnel returned" error is logged without failing the deployment.
 
 ## Caveats (verify before a live deploy)
 
@@ -158,6 +167,8 @@ orchestrator maps to phases and the final tunnel URL.
   SDK before relying on it.
 - The `CALLBACK_URL` event convention is implemented by the workload, not a
   protocol guarantee.
-- The shared `tunnel.acurast.dev` zone is a newer canary feature; subdomains are
-  ephemeral. Confirm the `_acu` preimage / relay IPs if you switch to a custom
-  domain.
+- The shared `tunnel.acurast.dev` zone must resolve to the relays of the selected
+  `NETWORK` (mainnet by default); subdomains are ephemeral. Confirm the `_acu`
+  preimage / relay IPs if you switch to a custom domain.
+- The manifest's `maxCostPerExecution` spends real ACU on mainnet — review before
+  high-volume use.

@@ -94,7 +94,7 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
   // ("app") which only resolves from the template dir, not from wherever the
   // server is launched — on the server that yields `ENOENT stat 'app'`. Rebase
   // any relative, non-ipfs fileUrl to an absolute path next to the acurast.json.
-  const cfg = acurastConfig as { fileUrl?: string };
+  const cfg = acurastConfig as { fileUrl?: string; network?: string };
   if (cfg && typeof cfg.fileUrl === "string") {
     const original = cfg.fileUrl;
     if (!original.startsWith("ipfs://") && !isAbsolute(original)) {
@@ -106,6 +106,13 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
     }
   } else {
     console.warn(`[deployer] acurast config has no string fileUrl; SDK may fail to locate payload`);
+  }
+
+  // NETWORK env is authoritative: the vendored manifest hardcodes a network, but
+  // the SDK derives per-network values (e.g. benchmark pool ids) from this field.
+  if (cfg && cfg.network !== config.network) {
+    console.log(`[deployer] overriding manifest network '${cfg.network}' -> '${config.network}'`);
+    cfg.network = config.network;
   }
 
   const job = deps.convertConfigToJob(acurastConfig);
@@ -126,6 +133,8 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
   const envRecord = template.injectedEnv({
     callbackUrl,
     domainSuffix: config.domainSuffix,
+    network: config.network,
+    sshAuthorizedKeys: config.sshAuthorizedKeys,
   });
   // The SDK wants an array of {key,value}, not a plain object.
   const envVars = Object.entries(envRecord).map(([key, value]) => ({ key, value }));
