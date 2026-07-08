@@ -178,6 +178,7 @@ function streamEvents(
       etaSeconds: current.etaSeconds,
       tunnelUrl: current.tunnelUrl,
       error: current.error,
+      lastMessage: current.lastMessage,
     });
   }
 

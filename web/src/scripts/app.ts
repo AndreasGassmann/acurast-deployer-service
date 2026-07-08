@@ -7,7 +7,15 @@ const DEPLOY_KEY = import.meta.env.PUBLIC_DEPLOY_KEY;
 interface DeploymentView {
   id: string;
   template: string;
-  status: "created" | "deploying" | "awaiting-tunnel" | "ready" | "expired" | "failed" | "timed-out";
+  status:
+    | "created"
+    | "deploying"
+    | "awaiting-tunnel"
+    | "tunnel-ready"
+    | "ready"
+    | "expired"
+    | "failed"
+    | "timed-out";
   phase: string | null;
   public: boolean;
   createdAt: string;
@@ -16,6 +24,7 @@ interface DeploymentView {
   chainDeploymentId: string | null;
   etaSeconds: number | null;
   progress: number;
+  lastMessage: string | null;
 }
 
 const HUB_EXPLORER = "https://hub.acurast.com/explorer/deployment";
@@ -57,6 +66,7 @@ const progressEl = $<HTMLDivElement>("progress");
 const barFill = $<HTMLSpanElement>("barFill");
 const phaseLabel = $<HTMLSpanElement>("phaseLabel");
 const etaLabel = $<HTMLSpanElement>("etaLabel");
+const logLabel = $<HTMLDivElement>("logLabel");
 const stepsEl = $<HTMLUListElement>("steps");
 const resultEl = $<HTMLDivElement>("result");
 const publicList = $<HTMLDivElement>("publicList");
@@ -80,7 +90,9 @@ function renderSteps(currentPhase: string | null): void {
 }
 
 function fmtEta(sec: number): string {
-  if (sec <= 0) return "almost done…";
+  // Past the estimate we don't know how much longer — be honest instead of
+  // implying it's about to finish (deploys can genuinely run 3x the estimate).
+  if (sec <= 0) return "taking longer than expected — still working…";
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return m > 0 ? `~${m}m ${s}s remaining` : `~${s}s remaining`;
@@ -99,9 +111,13 @@ function startEtaCountdown(): void {
 }
 
 function applyView(v: DeploymentView): void {
-  barFill.style.width = `${Math.round(v.progress * 100)}%`;
+  // Never imply 100% before we're truly ready — cap the bar until the terminal
+  // ready state so a slow model doesn't sit at a full-looking bar.
+  const pct = v.status === "ready" ? 100 : Math.min(95, Math.round(v.progress * 100));
+  barFill.style.width = `${pct}%`;
   phaseLabel.textContent = v.phase ? PHASE_LABEL[v.phase] ?? v.phase : "Starting…";
   renderSteps(v.phase);
+  logLabel.textContent = v.lastMessage ?? "";
   if (v.etaSeconds != null) {
     if (v.phase !== etaPhase) {
       // New phase: adopt its fresh estimate.
@@ -113,6 +129,18 @@ function applyView(v: DeploymentView): void {
     }
     etaLabel.textContent = fmtEta(localEta);
   }
+  // Tunnel is live but the model may still be loading — surface the usable link
+  // right away (non-terminal, so polling continues until fully ready).
+  if (v.status === "tunnel-ready" && v.tunnelUrl) {
+    deployBtn.disabled = false;
+    deployBtn.textContent = "Deploy now";
+    resultEl.className = "result show ok";
+    const explorer = explorerLink(v);
+    resultEl.innerHTML =
+      `Your QVAC instance is reachable (model still loading):<br />` +
+      `<a href="${v.tunnelUrl}" target="_blank" rel="noreferrer">${v.tunnelUrl}</a>` +
+      (explorer ? `<br />${explorer}` : "");
+  }
 }
 
 function finish(v: DeploymentView): void {
@@ -121,6 +149,7 @@ function finish(v: DeploymentView): void {
   deployBtn.disabled = false;
   deployBtn.textContent = "Deploy now";
 
+  logLabel.textContent = "";
   if (v.status === "ready" && v.tunnelUrl) {
     barFill.style.width = "100%";
     phaseLabel.textContent = "Ready";
@@ -202,8 +231,9 @@ async function loadPublic(): Promise<void> {
     publicList.innerHTML = items
       .map((v) => {
         const when = new Date(v.createdAt).toLocaleString();
+        // A live tunnel (ready OR model-still-loading) is usable, so link it.
         const right =
-          v.status === "ready" && v.tunnelUrl
+          (v.status === "ready" || v.status === "tunnel-ready") && v.tunnelUrl
             ? `<a href="${v.tunnelUrl}" target="_blank" rel="noreferrer">Open →</a>`
             : `<span class="pill ${v.status}">${v.status}</span>`;
         const explorer = explorerLink(v);

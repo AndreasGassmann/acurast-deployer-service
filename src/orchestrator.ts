@@ -11,6 +11,7 @@ import type { EventHub } from "./events.js";
 import type { DeployDeps } from "./deployer.js";
 import { runDeploy } from "./deployer.js";
 import { getTemplate } from "./templates/index.js";
+import { sanitizeLog } from "./log-sanitize.js";
 import type { DeploymentStatus, Phase, ProgressEvent } from "./types.js";
 
 export interface Clock {
@@ -72,15 +73,27 @@ export interface OrchestratorOptions {
   events: EventHub;
   deps: DeployDeps;
   clock?: Clock;
-  /** ms to wait for the workload tunnel callback before timing out. */
+  /** ms to wait for the workload tunnel callback (env-set -> started) before timing out. */
   tunnelTimeoutMs?: number;
+  /**
+   * ms to wait for the model after the tunnel is up (started -> model-ready)
+   * before flagging it slow. This never fails the deploy — the tunnel is live
+   * and usable; it only surfaces a soft note.
+   */
+  modelLoadTimeoutMs?: number;
   /** ms a failed/timed-out/expired deploy lingers before cleanup. */
   cleanupRetentionMs?: number;
 }
 
 const DEFAULT_TUNNEL_TIMEOUT_MS = 15 * 60 * 1000;
+/** How long to wait for the model once the tunnel is up before the soft note. */
+const DEFAULT_MODEL_LOAD_TIMEOUT_MS = 30 * 60 * 1000;
 /** How long failed/timed-out/expired deploys linger before cleanup. */
 const DEFAULT_CLEANUP_RETENTION_MS = 60 * 60 * 1000;
+
+/** Soft-cap note shown when the tunnel is live but the model is slow to load. */
+const SLOW_MODEL_NOTE =
+  "Model is taking longer than expected — the instance is reachable; the model is still loading.";
 
 export class Orchestrator {
   private readonly config: Config;
@@ -90,6 +103,7 @@ export class Orchestrator {
   private readonly deps: DeployDeps;
   private readonly clock: Clock;
   private readonly tunnelTimeoutMs: number;
+  private readonly modelLoadTimeoutMs: number;
   private readonly cleanupRetentionMs: number;
   private readonly timers = new Map<string, () => void>();
 
@@ -101,6 +115,7 @@ export class Orchestrator {
     this.deps = opts.deps;
     this.clock = opts.clock ?? systemClock;
     this.tunnelTimeoutMs = opts.tunnelTimeoutMs ?? DEFAULT_TUNNEL_TIMEOUT_MS;
+    this.modelLoadTimeoutMs = opts.modelLoadTimeoutMs ?? DEFAULT_MODEL_LOAD_TIMEOUT_MS;
     this.cleanupRetentionMs = opts.cleanupRetentionMs ?? DEFAULT_CLEANUP_RETENTION_MS;
   }
 
@@ -207,7 +222,13 @@ export class Orchestrator {
       return true;
     }
     if (event.event === "log") {
-      // logs don't change state; ignored for v1 (could be surfaced later)
+      // Surface a single cleaned progress line. Logs are transient: update the
+      // in-memory view + publish to live subscribers, but never persist them.
+      const clean = event.message ? sanitizeLog(event.message) : null;
+      if (clean) {
+        this.deployments.setMessage(id, clean);
+        this.publish(id);
+      }
       return true;
     }
 
@@ -217,7 +238,12 @@ export class Orchestrator {
     const now = this.clock.nowIso();
     const tunnelUrl = event.webUrl ?? event.url;
     if (event.event === "started" && tunnelUrl) {
-      this.deployments.setStatus(id, "awaiting-tunnel", now, { tunnelUrl });
+      // Tunnel is live + reachable. Stop the tunnel-wait guard and hand off to a
+      // separate, generous model-load guard — a slow model must NOT time out the
+      // deploy (that killed slow-but-working deploys before).
+      this.deployments.setStatus(id, "tunnel-ready", now, { tunnelUrl });
+      this.clearTimer(id);
+      this.armModelTimeout(id);
       // The SSH debug tunnel is operator-only: log + persist to history.jsonl,
       // but keep it out of the API views (public deployments are world-readable).
       if (event.connect) {
@@ -246,14 +272,16 @@ export class Orchestrator {
     return true;
   }
 
-  /** Re-arm tunnel-wait timeouts for in-flight deploys after a restart. */
+  /** Re-arm the appropriate wait guard for in-flight deploys after a restart. */
   resumeInFlight(ids: string[]): void {
     for (const id of ids) {
       const item = this.deployments.get(id);
       if (!item) continue;
       // The token is persisted, so a resumed deploy can still receive its workload
-      // callback. Re-arm a fresh tunnel-wait window in case nothing arrives.
-      this.armTunnelTimeout(id);
+      // callback. If the tunnel is already up, only the model guard is relevant;
+      // otherwise re-arm the tunnel-wait window in case nothing arrives.
+      if (item.tunnelUrl) this.armModelTimeout(id);
+      else this.armTunnelTimeout(id);
     }
   }
 
@@ -262,6 +290,14 @@ export class Orchestrator {
     const cancel = this.clock.schedule(() => {
       void this.timeout(id);
     }, this.tunnelTimeoutMs);
+    this.timers.set(id, cancel);
+  }
+
+  private armModelTimeout(id: string): void {
+    this.clearTimer(id);
+    const cancel = this.clock.schedule(() => {
+      void this.modelTimeout(id);
+    }, this.modelLoadTimeoutMs);
     this.timers.set(id, cancel);
   }
 
@@ -276,8 +312,25 @@ export class Orchestrator {
   private async timeout(id: string): Promise<void> {
     this.timers.delete(id);
     const item = this.deployments.get(id);
-    if (!item || item.status === "ready" || item.status === "failed") return;
+    // Only a deploy still waiting for its tunnel can time out. Once the tunnel is
+    // up (tunnel-ready / ready) or the deploy already ended, this is a no-op.
+    if (!item || item.status === "ready" || item.status === "failed" || item.status === "tunnel-ready")
+      return;
     await this.setTerminal(id, "timed-out", { error: "timed out waiting for tunnel" });
+  }
+
+  /**
+   * The model-load guard fired: the tunnel is live but the model has not reported
+   * ready. This does NOT fail the deploy — it stays tunnel-ready and usable. We
+   * only surface a soft note so the UI can stop implying it's stuck.
+   */
+  private async modelTimeout(id: string): Promise<void> {
+    this.timers.delete(id);
+    const item = this.deployments.get(id);
+    if (!item || item.status !== "tunnel-ready") return;
+    console.warn(`[orchestrator] id=${id} model slow to load; tunnel stays live`);
+    this.deployments.setMessage(id, SLOW_MODEL_NOTE);
+    this.publish(id);
   }
 
   private async fail(id: string, message: string): Promise<void> {
@@ -319,6 +372,13 @@ export class Orchestrator {
       ...(extra.token ? { token: extra.token } : {}),
       ...(extra.sshCommand ? { sshCommand: extra.sshCommand } : {}),
     });
+    this.publish(id);
+  }
+
+  /** Publish the current view to live SSE subscribers (no history write). */
+  private publish(id: string): void {
+    const view = this.deployments.view(id);
+    if (!view) return;
     const progress: ProgressEvent = {
       id,
       status: view.status,
@@ -327,6 +387,7 @@ export class Orchestrator {
       etaSeconds: view.etaSeconds,
       tunnelUrl: view.tunnelUrl,
       error: view.error,
+      lastMessage: view.lastMessage,
     };
     this.events.publish(progress);
   }

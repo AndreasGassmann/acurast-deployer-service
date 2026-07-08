@@ -95,7 +95,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
-function build(deps: DeployDeps, clock: Clock) {
+function build(deps: DeployDeps, clock: Clock, opts: { modelLoadTimeoutMs?: number } = {}) {
   const deployments = new Deployments();
   const history = new History(dir);
   const events = new EventHub();
@@ -107,6 +107,7 @@ function build(deps: DeployDeps, clock: Clock) {
     deps,
     clock,
     tunnelTimeoutMs: 1000,
+    modelLoadTimeoutMs: opts.modelLoadTimeoutMs ?? 5000,
   });
   return { deployments, history, events, orchestrator };
 }
@@ -227,6 +228,83 @@ describe("Orchestrator", () => {
     const v = deployments.view(id)!;
     expect(v.status).toBe("failed");
     expect(v.error).toMatch(/chain rejected/);
+  });
+
+  it("goes tunnel-ready on the tunnel callback and no longer times out", async () => {
+    const { clock, advance } = makeClock();
+    const { orchestrator, deployments } = build(fakeDeps(), clock);
+    const id = await orchestrator.start("qvac", {}, true);
+    await flush();
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, {
+      event: "started",
+      webUrl: "https://abc.tunnel.acurast.dev:8443",
+    });
+    expect(deployments.view(id)?.status).toBe("tunnel-ready");
+
+    // The old tunnel-wait window elapses — must NOT time out; tunnel is live.
+    advance(1000);
+    await flush();
+    expect(deployments.view(id)?.status).toBe("tunnel-ready");
+    // still listed publicly (usable now)
+    expect(deployments.list({ publicOnly: true }).some((v) => v.id === id)).toBe(true);
+
+    // late model_ready upgrades to fully ready
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, { event: "model_ready" });
+    expect(deployments.view(id)?.status).toBe("ready");
+  });
+
+  it("flags a slow model with a soft note but keeps it live + public", async () => {
+    const { clock, advance } = makeClock();
+    const { orchestrator, deployments } = build(fakeDeps(), clock, { modelLoadTimeoutMs: 2000 });
+    const id = await orchestrator.start("qvac", {}, true);
+    await flush();
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, {
+      event: "started",
+      webUrl: "https://abc.tunnel.acurast.dev:8443",
+    });
+
+    advance(2000); // fire the model-load guard
+    await flush();
+    const v = deployments.view(id)!;
+    expect(v.status).toBe("tunnel-ready"); // NOT timed-out
+    expect(v.error).toBeNull();
+    expect(v.lastMessage).toMatch(/taking longer/i);
+    expect(deployments.list({ publicOnly: true }).some((x) => x.id === id)).toBe(true);
+  });
+
+  it("surfaces a cleaned log message and drops noise", async () => {
+    const { clock } = makeClock();
+    const { orchestrator, deployments, events } = build(fakeDeps(), clock);
+    const id = await orchestrator.start("qvac", {}, true);
+    await flush();
+    const token = deployments.get(id)!.token;
+    const seen: ProgressEvent[] = [];
+    events.subscribe(id, (e) => seen.push(e));
+
+    await orchestrator.handleCallback(id, token, { event: "log", message: "Installing Node.js v24" });
+    expect(deployments.view(id)?.lastMessage).toBe("Installing Node.js v24");
+    expect(seen.at(-1)?.lastMessage).toBe("Installing Node.js v24");
+
+    // noise is dropped: lastMessage unchanged
+    await orchestrator.handleCallback(id, token, {
+      event: "log",
+      message: "debconf: unable to initialize frontend: Dialog",
+    });
+    expect(deployments.view(id)?.lastMessage).toBe("Installing Node.js v24");
+  });
+
+  it("does not persist log messages to history", async () => {
+    const { clock } = makeClock();
+    const { orchestrator, deployments, history } = build(fakeDeps(), clock);
+    const id = await orchestrator.start("qvac", {}, true);
+    await flush();
+    await orchestrator.handleCallback(id, deployments.get(id)!.token, {
+      event: "log",
+      message: "Loading the model",
+    });
+    await history.drain();
+    const records = await history.readAll();
+    expect(records.some((r) => JSON.stringify(r).includes("Loading the model"))).toBe(false);
   });
 
   it("times out while awaiting the tunnel", async () => {

@@ -5,7 +5,8 @@ export type DeploymentStatus =
   | "created"
   | "deploying" // SDK phase A in progress
   | "awaiting-tunnel" // env vars set, waiting for workload callback
-  | "ready" // tunnel live + app ready
+  | "tunnel-ready" // tunnel live + reachable; model still loading
+  | "ready" // tunnel live + model ready
   | "expired" // ran its allotted execution time; tunnel no longer live
   | "failed"
   | "timed-out";
@@ -60,6 +61,11 @@ export interface DeploymentView {
   etaSeconds: number | null;
   /** 0..1 progress derived from phase order. */
   progress: number;
+  /**
+   * Latest cleaned, human-readable progress message from the workload (sanitized
+   * `event=log`) or a soft-cap note. Transient (not persisted); null until one arrives.
+   */
+  lastMessage: string | null;
 }
 
 /** One line in history.jsonl. Never contains the mnemonic or secret params. */
@@ -98,4 +104,6 @@ export interface ProgressEvent {
   etaSeconds: number | null;
   tunnelUrl: string | null;
   error: string | null;
+  /** Latest cleaned progress message (sanitized workload log or soft-cap note). */
+  lastMessage: string | null;
 }

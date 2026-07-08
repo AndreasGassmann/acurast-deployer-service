@@ -97,6 +97,11 @@ button.deploy:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 }
 .statusline { display: flex; justify-content: space-between; margin-top: 10px; font-size: 14px; color: var(--muted); }
 .phase-label { color: var(--text); font-weight: 600; }
+.log-line {
+  margin-top: 6px; font-size: 12px; color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 16px;
+}
 
 .steps { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 6px; }
 .steps li { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
@@ -120,6 +125,7 @@ button.deploy:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .deploy-item .meta { font-size: 13px; color: var(--muted); }
 .pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); }
 .pill.ready { color: var(--accent); border-color: rgba(110,231,183,0.4); }
+.pill.tunnel-ready { color: var(--accent-2); border-color: rgba(56,189,248,0.4); }
 .pill.failed, .pill.timed-out { color: var(--danger); border-color: rgba(248,113,113,0.4); }
 .empty { color: var(--muted); font-size: 14px; }
 

@@ -7,6 +7,9 @@ import { Orchestrator } from "./orchestrator.js";
 import { realDeps } from "./deployer.js";
 import { mockDeps } from "./deployer-mock.js";
 import { createApp } from "./app.js";
+import { computeEstimates } from "./estimates.js";
+import { listTemplates } from "./templates/index.js";
+import type { Phase } from "./types.js";
 
 // A deploy runs detached and the SDK can throw outside any awaited path (e.g. in
 // its internal env-var step), which would otherwise crash the whole service and
@@ -23,11 +26,20 @@ process.on("uncaughtException", (err) => {
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
   const history = new History(config.dataDir);
-  const deployments = new Deployments();
   const events = new EventHub();
 
   // Rebuild state from the only persistence we have.
   const records = await history.readAll();
+
+  // Derive per-phase ETA estimates from history (per template), falling back to
+  // each template's baked-in guesses. Computed once at boot.
+  const estimates: Record<string, Record<Phase, number>> = {};
+  for (const t of listTemplates()) {
+    const forTemplate = records.filter((r) => r.template === t.id);
+    estimates[t.id] = computeEstimates(forTemplate, t.estimates);
+  }
+
+  const deployments = new Deployments(estimates);
   const inFlight = deployments.rebuildFrom(records);
 
   const mock = process.env.MOCK_DEPLOY === "true";
@@ -36,7 +48,15 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log("MOCK_DEPLOY=true — using simulated deployments (no chain/IPFS).");
   }
-  const orchestrator = new Orchestrator({ config, deployments, history, events, deps });
+  const orchestrator = new Orchestrator({
+    config,
+    deployments,
+    history,
+    events,
+    deps,
+    tunnelTimeoutMs: config.tunnelTimeoutMs,
+    modelLoadTimeoutMs: config.modelLoadTimeoutMs,
+  });
 
   // Re-arm tunnel-wait timeouts for deploys that were in flight at shutdown.
   orchestrator.resumeInFlight(inFlight);

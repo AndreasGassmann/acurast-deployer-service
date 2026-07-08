@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Deployments } from "./deployments";
 import { PHASE_ORDER } from "./types";
-import type { HistoryRecord } from "./types";
+import type { HistoryRecord, Phase } from "./types";
 
 const NOW = "2026-06-18T00:00:00.000Z";
 
@@ -108,6 +108,43 @@ describe("Deployments", () => {
     d.rebuildFrom(records);
     expect(d.verifyToken("live1", "tok-123")).toBe(true);
     expect(d.verifyToken("live1", "wrong")).toBe(false);
+  });
+
+  it("keeps tunnel-ready deploys in the public list (usable, model still loading)", () => {
+    const d = new Deployments();
+    const { id } = d.create("qvac", true, NOW);
+    d.setStatus(id, "tunnel-ready", NOW, { tunnelUrl: "https://t" });
+    const pub = d.list({ publicOnly: true });
+    expect(pub.map((v) => v.id)).toContain(id);
+  });
+
+  it("surfaces the latest message in the view", () => {
+    const d = new Deployments();
+    const { id } = d.create("qvac", true, NOW);
+    expect(d.view(id)?.lastMessage).toBeNull();
+    d.setMessage(id, "Loading the model");
+    expect(d.view(id)?.lastMessage).toBe("Loading the model");
+  });
+
+  it("uses injected per-template estimates over the template fallback", () => {
+    const custom: Record<string, Record<Phase, number>> = {
+      qvac: {
+        uploaded: 100,
+        prepared: 0,
+        submitted: 0,
+        matching: 0,
+        matched: 0,
+        ack: 0,
+        "env-set": 0,
+        started: 0,
+        "model-loading": 0,
+        "model-ready": 0,
+      },
+    };
+    const d = new Deployments(custom);
+    const { id } = d.create("qvac", false, NOW);
+    // No phase yet -> etaSeconds equals the injected total (100), not the template's.
+    expect(d.view(id)?.etaSeconds).toBe(100);
   });
 
   it("keeps PHASE_ORDER and qvac estimates in sync", () => {

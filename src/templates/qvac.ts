@@ -40,17 +40,19 @@ export const qvacTemplate: Template = {
     [`DOMAIN_SUFFIX_${network.toUpperCase()}`]: domainSuffix,
     SSH_AUTHORIZED_KEYS: sshAuthorizedKeys,
   }),
-  // No protocol time estimates exist; these are hand-tuned per-phase guesses (seconds).
+  // Cold-start fallback guesses (seconds), used until history yields enough
+  // samples (see estimates.ts). Bumped toward observed reality (~15m total);
+  // model-loading is the long pole (downloads the runtime + model, then loads it).
   estimates: {
     uploaded: 15,
     prepared: 10,
-    submitted: 10,
-    matching: 90,
-    matched: 10,
-    ack: 30,
-    "env-set": 15,
-    started: 60,
-    "model-loading": 90,
+    submitted: 15,
+    matching: 180,
+    matched: 15,
+    ack: 60,
+    "env-set": 30,
+    started: 120,
+    "model-loading": 480,
     "model-ready": 0,
   },
 };

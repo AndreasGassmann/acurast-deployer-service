@@ -37,6 +37,8 @@ interface Internal {
   expiresAt: string | null;
   /** Per-deployment unguessable token authorizing the tunnel callback. */
   token: string;
+  /** Latest cleaned progress message (transient; not persisted). */
+  lastMessage: string | null;
 }
 
 function genId(): string {
@@ -53,6 +55,16 @@ function isTerminal(status: DeploymentStatus): boolean {
 
 export class Deployments {
   private readonly items = new Map<string, Internal>();
+  /**
+   * Per-template, history-derived per-phase estimates (seconds). When a template
+   * is present here its values drive progress/ETA; otherwise the template's own
+   * baked-in `estimates` are used as the fallback.
+   */
+  private readonly estimates: Record<string, Record<Phase, number>>;
+
+  constructor(estimates: Record<string, Record<Phase, number>> = {}) {
+    this.estimates = estimates;
+  }
 
   /** Create a new deployment. `now` injected for deterministic tests. */
   create(template: string, isPublic: boolean, now: string): { id: string; token: string } {
@@ -71,6 +83,7 @@ export class Deployments {
       chainDeploymentId: null,
       expiresAt: null,
       token,
+      lastMessage: null,
     });
     return { id, token };
   }
@@ -95,8 +108,9 @@ export class Deployments {
     }
     // Derive the intermediate status from the phase. Terminal "ready" is NOT set
     // here — that requires both the tunnel URL and model-ready, decided by the
-    // orchestrator. Don't override an already-terminal status.
-    if (!isTerminal(item.status)) {
+    // orchestrator. Don't override an already-terminal status, nor "tunnel-ready"
+    // (the tunnel is live; a late phase event must not regress the label).
+    if (!isTerminal(item.status) && item.status !== "tunnel-ready") {
       item.status =
         PHASE_ORDER.indexOf(item.phase!) >= PHASE_ORDER.indexOf("env-set")
           ? "awaiting-tunnel"
@@ -128,6 +142,12 @@ export class Deployments {
   setChainDeploymentId(id: string, chainId: string): void {
     const item = this.items.get(id);
     if (item) item.chainDeploymentId = chainId;
+  }
+
+  /** Set the latest cleaned progress message (transient; not persisted). */
+  setMessage(id: string, message: string): void {
+    const item = this.items.get(id);
+    if (item) item.lastMessage = message;
   }
 
   /** Ids of ready deployments whose run window has elapsed. */
@@ -203,6 +223,8 @@ export class Deployments {
           // Restored from the persisted "created" record so callbacks still
           // authenticate after a restart (empty if an older record lacks it).
           token: r.token ?? "",
+          // Log messages are transient and never persisted.
+          lastMessage: null,
         };
         this.items.set(r.id, item);
       } else {
@@ -239,6 +261,7 @@ export class Deployments {
       expiresAt: item.expiresAt,
       etaSeconds,
       progress,
+      lastMessage: item.lastMessage,
     };
   }
 
@@ -260,19 +283,26 @@ export class Deployments {
     return (idx + 1) / PHASE_ORDER.length;
   }
 
+  /** History-derived estimates for a template, or the template's baked-in fallback. */
+  private estimatesFor(templateId: string): Record<Phase, number> | null {
+    const derived = this.estimates[templateId];
+    if (derived) return derived;
+    return getTemplate(templateId)?.estimates ?? null;
+  }
+
   private totalEstimate(templateId: string): number | null {
-    const t = getTemplate(templateId);
-    if (!t) return null;
-    return PHASE_ORDER.reduce((sum, p) => sum + (t.estimates[p] ?? 0), 0);
+    const est = this.estimatesFor(templateId);
+    if (!est) return null;
+    return PHASE_ORDER.reduce((sum, p) => sum + (est[p] ?? 0), 0);
   }
 
   private remainingEstimate(templateId: string, phase: Phase): number | null {
-    const t = getTemplate(templateId);
-    if (!t) return null;
+    const est = this.estimatesFor(templateId);
+    if (!est) return null;
     const idx = PHASE_ORDER.indexOf(phase);
     let sum = 0;
     for (let i = idx + 1; i < PHASE_ORDER.length; i++) {
-      sum += t.estimates[PHASE_ORDER[i]] ?? 0;
+      sum += est[PHASE_ORDER[i]] ?? 0;
     }
     return sum;
   }

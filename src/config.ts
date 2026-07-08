@@ -27,6 +27,10 @@ export interface Config {
   publicDeployRatePerHour: number;
   /** Allowed CORS origins; ["*"] allows any. */
   corsOrigins: string[];
+  /** ms to wait for the tunnel callback before timing out; undefined => orchestrator default. */
+  tunnelTimeoutMs?: number;
+  /** ms to wait for the model once the tunnel is up before the soft note; undefined => default. */
+  modelLoadTimeoutMs?: number;
 }
 
 const DEFAULT_DOMAIN_SUFFIX = "tunnel.acurast.dev";
@@ -74,6 +78,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`Invalid PUBLIC_DEPLOY_RATE_PER_HOUR: ${rateRaw}`);
   }
 
+  const optionalMs = (key: string): number | undefined => {
+    const raw = env[key]?.trim();
+    if (!raw) return undefined;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) throw new Error(`Invalid ${key}: ${raw}`);
+    return n;
+  };
+  const tunnelTimeoutMs = optionalMs("TUNNEL_TIMEOUT_MS");
+  const modelLoadTimeoutMs = optionalMs("MODEL_LOAD_TIMEOUT_MS");
+
   return {
     acurastMnemonic: required(env, "ACURAST_MNEMONIC"),
     rpcWss: required(env, "RPC_WSS"),
@@ -91,5 +105,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dataDir: env.DATA_DIR?.trim() || "./data",
     publicDeployRatePerHour,
     corsOrigins: splitKeys(env.CORS_ORIGINS?.trim() || "*"),
+    tunnelTimeoutMs,
+    modelLoadTimeoutMs,
   };
 }
