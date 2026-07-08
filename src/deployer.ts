@@ -14,6 +14,13 @@ import type { Template } from "./templates/index.js";
 /** SDK surface we depend on (see research report for verified signatures). */
 export interface DeployDeps {
   loadAcurastConfig: (opts: { filePath: string; project: string }) => unknown;
+  /**
+   * Merges the current processor version table (versions.json) into the SDK's
+   * bundled one. Without it, convertConfigToJob cannot resolve manifest
+   * `minProcessorVersions` strings newer than the SDK release (the acurast CLI
+   * does the same refresh on startup). Optional so test fakes can omit it.
+   */
+  fetchDeviceVersions?: () => Promise<unknown>;
   convertConfigToJob: (config: unknown) => unknown;
   walletFromMnemonic: (mnemonic: string) => Promise<unknown>;
   deployProject: (
@@ -52,6 +59,7 @@ export async function realDeps(): Promise<DeployDeps> {
   const chain = await import("@acurast/sdk/chain");
   return {
     loadAcurastConfig: (opts) => (sdk as any).loadAcurastConfig(opts),
+    fetchDeviceVersions: () => (chain as any).fetchDeviceVersions(),
     convertConfigToJob: (config) => (chain as any).convertConfigToJob(config),
     walletFromMnemonic: (mnemonic) => (chain as any).walletFromMnemonic(mnemonic),
     deployProject: (config, job, options) => (sdk as any).deployProject(config, job, options),
@@ -113,6 +121,18 @@ export async function runDeploy(args: RunDeployArgs): Promise<void> {
   if (cfg && cfg.network !== config.network) {
     console.log(`[deployer] overriding manifest network '${cfg.network}' -> '${config.network}'`);
     cfg.network = config.network;
+  }
+
+  // Refresh the processor version table so the manifest's minProcessorVersions
+  // strings resolve even when newer than the SDK's bundled table. Non-fatal: if
+  // the fetch fails AND the manifest needs a newer version, convertConfigToJob
+  // throws its own descriptive error below.
+  if (deps.fetchDeviceVersions) {
+    try {
+      await deps.fetchDeviceVersions();
+    } catch (err) {
+      console.warn(`[deployer] device-versions refresh failed (continuing with bundled table): ${err}`);
+    }
   }
 
   const job = deps.convertConfigToJob(acurastConfig);

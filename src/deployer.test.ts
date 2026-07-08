@@ -126,6 +126,41 @@ describe("runDeploy", () => {
     });
   });
 
+  it("refreshes the device-version table before converting the config", async () => {
+    const calls: string[] = [];
+    const deps: DeployDeps = {
+      loadAcurastConfig: () => ({}),
+      fetchDeviceVersions: async () => {
+        calls.push("fetch");
+      },
+      convertConfigToJob: () => {
+        calls.push("convert");
+        return {};
+      },
+      walletFromMnemonic: async () => ({}),
+      deployProject: async () => {},
+    };
+    await runDeploy({ config, template: qvacTemplate, callbackUrl: "c", deps, onPhase: () => {} });
+    expect(calls).toEqual(["fetch", "convert"]);
+  });
+
+  it("continues with the bundled version table when the refresh fails", async () => {
+    let deployed = false;
+    const deps: DeployDeps = {
+      loadAcurastConfig: () => ({}),
+      fetchDeviceVersions: async () => {
+        throw new Error("github down");
+      },
+      convertConfigToJob: () => ({}),
+      walletFromMnemonic: async () => ({}),
+      deployProject: async () => {
+        deployed = true;
+      },
+    };
+    await runDeploy({ config, template: qvacTemplate, callbackUrl: "c", deps, onPhase: () => {} });
+    expect(deployed).toBe(true);
+  });
+
   it("propagates SDK errors", async () => {
     const deps: DeployDeps = {
       loadAcurastConfig: () => ({}),
