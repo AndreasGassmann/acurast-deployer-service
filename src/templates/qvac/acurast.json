@@ -16,7 +16,7 @@
       },
       "execution": {
         "type": "onetime",
-        "maxExecutionTimeInMs": 7200000
+        "maxExecutionTimeInMs": 43200000
       },
       "maxAllowedStartDelayInMs": 10000,
       "usageLimit": {
@@ -30,7 +30,7 @@
         "android": "1.26.0"
       },
       "minProcessorReputation": 0,
-      "maxCostPerExecution": 21215088000,
+      "maxCostPerExecution": 127290528000,
       "includeEnvironmentVariables": [
         "CALLBACK_URL",
         "NETWORK",
